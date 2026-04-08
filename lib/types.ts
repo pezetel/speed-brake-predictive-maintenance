@@ -14,6 +14,11 @@ export interface FlightRecord {
   aircraftType: 'NG' | 'MAX';
   anomalyLevel: 'normal' | 'warning' | 'critical';
   anomalyReasons: string[];
+  // computed fields
+  isDoubledRecord: boolean;
+  normalizedPfd: number;
+  durationRatio: number;
+  landingDistAnomaly: boolean;
 }
 
 export interface AnomalySummary {
@@ -26,6 +31,10 @@ export interface AnomalySummary {
   uniqueMAXTails: number;
   avgPFD: number;
   problematicTails: string[];
+  avgDeg: number;
+  avgDuration: number;
+  avgLandingDist: number;
+  doubledRecords: number;
 }
 
 export interface CorrelationData {
@@ -40,4 +49,48 @@ export interface FilterState {
   aircraftType: 'ALL' | 'NG' | 'MAX';
   anomalyLevel: 'ALL' | 'normal' | 'warning' | 'critical';
   airport: string;
+}
+
+export interface TailHealthScore {
+  tailNumber: string;
+  aircraftType: 'NG' | 'MAX';
+  totalFlights: number;
+  avgPfd: number;
+  avgDeg: number;
+  avgDurationDeriv: number;
+  avgDurationExt: number;
+  avgLanding30: number;
+  avgLanding50: number;
+  criticalCount: number;
+  warningCount: number;
+  healthScore: number;
+  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  trend: 'improving' | 'stable' | 'degrading';
+  durationRatioAvg: number;
+  landingDistAnomalyRate: number;
+}
+
+export interface PredictiveInsight {
+  id: string;
+  tailNumber: string;
+  category: 'hydraulic' | 'mechanical' | 'sensor' | 'actuator' | 'operational';
+  severity: 'info' | 'warning' | 'critical';
+  title: string;
+  description: string;
+  evidence: string[];
+  recommendation: string;
+  relatedFlights: number;
+  confidence: number;
+}
+
+export interface LandingDistanceAnalysis {
+  tailNumber: string;
+  route: string;
+  date: string;
+  dist30kn: number;
+  dist50kn: number;
+  pfd: number;
+  deg: number;
+  anomalyType: 'normal' | '50kn_exceeds_30kn' | 'excessive_distance' | 'pfd_correlation';
+  riskScore: number;
 }
