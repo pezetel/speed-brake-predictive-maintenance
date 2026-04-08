@@ -8,19 +8,12 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        'sb-dark': '#0f172a',
-        'sb-card': '#1e293b',
-        'sb-border': '#334155',
-        'sb-accent': '#3b82f6',
-        'sb-warn': '#f59e0b',
-        'sb-danger': '#ef4444',
-        'sb-success': '#22c55e',
-        'sb-info': '#06b6d4',
+        primary: { 50: '#eff6ff', 100: '#dbeafe', 200: '#bfdbfe', 300: '#93c5fd', 400: '#60a5fa', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8', 800: '#1e40af', 900: '#1e3a8a' },
+        danger: { 50: '#fef2f2', 100: '#fee2e2', 400: '#f87171', 500: '#ef4444', 600: '#dc2626' },
+        warning: { 50: '#fffbeb', 100: '#fef3c7', 400: '#fbbf24', 500: '#f59e0b', 600: '#d97706' },
+        success: { 50: '#f0fdf4', 100: '#dcfce7', 400: '#4ade80', 500: '#22c55e', 600: '#16a34a' },
       },
-      animation: {
-        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-      }
     },
   },
   plugins: [],
-}
+};

@@ -4,39 +4,40 @@ export interface FlightRecord {
   takeoffAirport: string;
   landingAirport: string;
   pfdTurn1: number;
-  durationDerivativeSec: number;
-  durationExtTo99Sec: number;
+  durationDerivative: number;
+  durationExtTo99: number;
   pfdTurn1Deg: number;
   pfeTo99Deg: number;
-  landingDist30Knot: number;
-  landingDist50Knot: number;
-  gsAtAutoSbopSec: number;
-}
-
-export interface AircraftHealth {
-  tailNumber: string;
+  landingDist30kn: number;
+  landingDist50kn: number;
+  gsAtAutoSbop: number;
   aircraftType: 'NG' | 'MAX';
+  anomalyLevel: 'normal' | 'warning' | 'critical';
+  anomalyReasons: string[];
+}
+
+export interface AnomalySummary {
   totalFlights: number;
-  avgPfdTurn1: number;
-  avgDurationDerivative: number;
-  avgDurationExtTo99: number;
-  avgPfdTurn1Deg: number;
-  avgPfeTo99Deg: number;
-  avgLandingDist30: number;
-  avgLandingDist50: number;
-  avgGsAtAutoSbop: number;
-  healthScore: number;
-  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
-  anomalies: Anomaly[];
+  criticalCount: number;
+  warningCount: number;
+  normalCount: number;
+  uniqueTails: number;
+  uniqueNGTails: number;
+  uniqueMAXTails: number;
+  avgPFD: number;
+  problematicTails: string[];
 }
 
-export interface Anomaly {
-  type: string;
-  severity: 'INFO' | 'WARNING' | 'CRITICAL';
-  description: string;
+export interface CorrelationData {
+  xKey: string;
+  yKey: string;
   value: number;
-  threshold: number;
-  flight?: string;
 }
 
-export type TabType = 'overview' | 'aircraft' | 'anomalies' | 'data';
+export interface FilterState {
+  dateRange: [string, string] | null;
+  tails: string[];
+  aircraftType: 'ALL' | 'NG' | 'MAX';
+  anomalyLevel: 'ALL' | 'normal' | 'warning' | 'critical';
+  airport: string;
+}

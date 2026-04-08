@@ -1,149 +1,120 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { TabType } from '@/lib/types';
-import { computeAircraftHealth, detectAnomalies, getAllFlights, getUniqueTails } from '@/lib/data';
-import FleetOverview from './FleetOverview';
-import AircraftDetail from './AircraftDetail';
-import AnomalyDetection from './AnomalyDetection';
-import DataTable from './DataTable';
-import { Plane, Activity, AlertTriangle, Database, Shield, ChevronRight } from 'lucide-react';
+import { FlightRecord, FilterState } from '@/lib/types';
+import { applyFilters, computeSummary } from '@/lib/utils';
+import KPICards from './KPICards';
+import CorrelationHeatmap from './CorrelationHeatmap';
+import ScatterPlot from './ScatterPlot';
+import AnomalyTable from './AnomalyTable';
+import TailTrend from './TailTrend';
+import NGvsMAX from './NGvsMAX';
+import Filters from './Filters';
+import { Plane, RotateCcw, AlertTriangle, BarChart3, GitCompareArrows, Activity, Table2, TrendingUp } from 'lucide-react';
 
-const tabs: { id: TabType; label: string; icon: React.ReactNode }[] = [
-  { id: 'overview', label: 'Filo Genel Bakış', icon: <Plane size={18} /> },
-  { id: 'aircraft', label: 'Uçak Detay', icon: <Activity size={18} /> },
-  { id: 'anomalies', label: 'Anomali Tespiti', icon: <AlertTriangle size={18} /> },
-  { id: 'data', label: 'Ham Veri', icon: <Database size={18} /> },
-];
+interface Props {
+  data: FlightRecord[];
+  onReset: () => void;
+}
 
-export default function Dashboard() {
-  const [activeTab, setActiveTab] = useState<TabType>('overview');
-  const [selectedTail, setSelectedTail] = useState<string>('');
+type TabKey = 'overview' | 'correlation' | 'scatter' | 'anomalies' | 'trends' | 'ngmax';
 
-  const healthData = useMemo(() => computeAircraftHealth(), []);
-  const anomalies = useMemo(() => detectAnomalies(), []);
-  const flights = useMemo(() => getAllFlights(), []);
-  const tails = useMemo(() => getUniqueTails(), []);
+export default function Dashboard({ data, onReset }: Props) {
+  const [activeTab, setActiveTab] = useState<TabKey>('overview');
+  const [filters, setFilters] = useState<FilterState>({
+    dateRange: null,
+    tails: [],
+    aircraftType: 'ALL',
+    anomalyLevel: 'ALL',
+    airport: '',
+  });
 
-  const criticalCount = healthData.filter(h => h.riskLevel === 'CRITICAL').length;
-  const highCount = healthData.filter(h => h.riskLevel === 'HIGH').length;
-  const totalAnomalies = anomalies.length;
-  const criticalAnomalies = anomalies.filter(a => a.severity === 'CRITICAL').length;
+  const filteredData = useMemo(() => applyFilters(data, filters), [data, filters]);
+  const summary = useMemo(() => computeSummary(filteredData), [filteredData]);
 
-  const handleAircraftClick = (tail: string) => {
-    setSelectedTail(tail);
-    setActiveTab('aircraft');
-  };
+  const tabs: { key: TabKey; label: string; icon: React.ReactNode }[] = [
+    { key: 'overview', label: 'Genel Bakış', icon: <BarChart3 className="w-4 h-4" /> },
+    { key: 'correlation', label: 'Korelasyon', icon: <GitCompareArrows className="w-4 h-4" /> },
+    { key: 'scatter', label: 'Scatter Plot', icon: <Activity className="w-4 h-4" /> },
+    { key: 'anomalies', label: 'Anomaliler', icon: <AlertTriangle className="w-4 h-4" /> },
+    { key: 'trends', label: 'Tail Trend', icon: <TrendingUp className="w-4 h-4" /> },
+    { key: 'ngmax', label: 'NG vs MAX', icon: <Plane className="w-4 h-4" /> },
+  ];
 
   return (
-    <div className="min-h-screen bg-sb-dark">
+    <div className="min-h-screen">
       {/* Header */}
-      <header className="border-b border-sb-border bg-sb-card/50 backdrop-blur-md sticky top-0 z-50">
-        <div className="max-w-[1920px] mx-auto px-4 sm:px-6">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
-                <Shield size={22} className="text-white" />
-              </div>
-              <div>
-                <h1 className="text-lg font-bold text-white">B737 Speedbrake</h1>
-                <p className="text-xs text-slate-400">Predictive Maintenance Dashboard</p>
-              </div>
+      <header className="sticky top-0 z-50 bg-slate-900/80 backdrop-blur-xl border-b border-slate-700/50">
+        <div className="max-w-[1600px] mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-blue-500/20 rounded-lg">
+              <Plane className="w-5 h-5 text-blue-400" />
             </div>
-            <div className="flex items-center gap-4">
-              <div className="hidden md:flex items-center gap-3 text-sm">
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-sb-dark/50">
-                  <span className="text-slate-400">Filo:</span>
-                  <span className="font-semibold text-white">{tails.length} uçak</span>
-                </div>
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-sb-dark/50">
-                  <span className="text-slate-400">Uçuş:</span>
-                  <span className="font-semibold text-white">{flights.length}</span>
-                </div>
-                {criticalCount > 0 && (
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/30 animate-pulse-slow">
-                    <span className="w-2 h-2 rounded-full bg-red-500"></span>
-                    <span className="font-semibold text-red-400">{criticalCount} Kritik</span>
-                  </div>
-                )}
-              </div>
-              <div className="text-xs text-slate-500">Veri: 8 Nisan 2025</div>
+            <div>
+              <h1 className="text-lg font-bold text-white">B737 Speedbrake Analizi</h1>
+              <p className="text-xs text-slate-400">
+                {summary.totalFlights} uçuş · {summary.uniqueTails} uçak · {summary.uniqueNGTails} NG · {summary.uniqueMAXTails} MAX
+              </p>
             </div>
           </div>
+          <button
+            onClick={onReset}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm text-slate-300 transition-colors"
+          >
+            <RotateCcw className="w-4 h-4" />
+            Yeni Dosya
+          </button>
         </div>
-      </header>
 
-      {/* Tab Navigation */}
-      <nav className="border-b border-sb-border bg-sb-card/30">
-        <div className="max-w-[1920px] mx-auto px-4 sm:px-6">
-          <div className="flex gap-1 overflow-x-auto scrollbar-thin py-2">
+        {/* Tabs */}
+        <div className="max-w-[1600px] mx-auto px-4">
+          <div className="flex gap-1 overflow-x-auto pb-0">
             {tabs.map(tab => (
               <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
-                  activeTab === tab.id
-                    ? 'bg-sb-accent text-white shadow-lg shadow-blue-500/20'
-                    : 'text-slate-400 hover:text-white hover:bg-sb-card'
-                }`}
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-t-lg transition-all whitespace-nowrap
+                  ${activeTab === tab.key
+                    ? 'bg-slate-800 text-blue-400 border-b-2 border-blue-400'
+                    : 'text-slate-400 hover:text-slate-300 hover:bg-slate-800/50'
+                  }`}
               >
                 {tab.icon}
                 {tab.label}
-                {tab.id === 'anomalies' && totalAnomalies > 0 && (
-                  <span className={`ml-1 px-2 py-0.5 rounded-full text-xs font-bold ${
-                    criticalAnomalies > 0 ? 'bg-red-500 text-white' : 'bg-yellow-500 text-black'
-                  }`}>
-                    {totalAnomalies}
+                {tab.key === 'anomalies' && summary.criticalCount > 0 && (
+                  <span className="ml-1 px-1.5 py-0.5 bg-red-500/20 text-red-400 text-xs rounded-full">
+                    {summary.criticalCount}
                   </span>
                 )}
               </button>
             ))}
           </div>
         </div>
-      </nav>
+      </header>
+
+      {/* Filters */}
+      <div className="max-w-[1600px] mx-auto px-4 pt-4">
+        <Filters data={data} filters={filters} onFilterChange={setFilters} />
+      </div>
 
       {/* Content */}
-      <main className="max-w-[1920px] mx-auto px-4 sm:px-6 py-6 animate-fade-in">
+      <div className="max-w-[1600px] mx-auto px-4 py-4 animate-fade-in">
         {activeTab === 'overview' && (
-          <FleetOverview
-            healthData={healthData}
-            flights={flights}
-            onAircraftClick={handleAircraftClick}
-          />
-        )}
-        {activeTab === 'aircraft' && (
-          <AircraftDetail
-            healthData={healthData}
-            selectedTail={selectedTail}
-            onTailChange={setSelectedTail}
-            tails={tails}
-          />
-        )}
-        {activeTab === 'anomalies' && (
-          <AnomalyDetection
-            anomalies={anomalies}
-            healthData={healthData}
-            onAircraftClick={handleAircraftClick}
-          />
-        )}
-        {activeTab === 'data' && (
-          <DataTable flights={flights} />
-        )}
-      </main>
-
-      {/* Footer */}
-      <footer className="border-t border-sb-border py-4 mt-8">
-        <div className="max-w-[1920px] mx-auto px-4 sm:px-6">
-          <div className="flex flex-col md:flex-row items-center justify-between text-xs text-slate-500 gap-2">
-            <div className="flex items-center gap-2">
-              <span>B737 NG/MAX Speedbrake Predictive Maintenance System</span>
-              <ChevronRight size={12} />
-              <span>Parametre Analizi &amp; Anomali Tespiti</span>
+          <div className="space-y-4">
+            <KPICards summary={summary} />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <CorrelationHeatmap data={filteredData} />
+              <ScatterPlot data={filteredData} />
             </div>
-            <div>Veriler DFDR/QAR kaynaklıdır • {flights.length} uçuş • {tails.length} uçak analiz edildi</div>
+            <AnomalyTable data={filteredData} maxRows={10} />
           </div>
-        </div>
-      </footer>
+        )}
+        {activeTab === 'correlation' && <CorrelationHeatmap data={filteredData} fullSize />}
+        {activeTab === 'scatter' && <ScatterPlot data={filteredData} fullSize />}
+        {activeTab === 'anomalies' && <AnomalyTable data={filteredData} />}
+        {activeTab === 'trends' && <TailTrend data={filteredData} />}
+        {activeTab === 'ngmax' && <NGvsMAX data={filteredData} />}
+      </div>
     </div>
   );
 }
