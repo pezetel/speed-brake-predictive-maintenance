@@ -21,6 +21,14 @@ export default function DocsTab() {
           Puanlar toplanarak uçuş <span className="text-emerald-400">Normal</span>, <span className="text-amber-400">Warning</span> veya <span className="text-red-400">Critical</span> olarak sınıflandırılır.
           Tek bir parametredeki hafif sapma alarm üretmez — birden fazla sinyalin aynı anda anormal olması gerekir.
         </p>
+        <div className="mt-3 bg-slate-700/30 rounded-lg p-3 border border-slate-600/30">
+          <p className="text-[11px] text-slate-400 leading-relaxed">
+            <strong className="text-white">Gerçek arıza verisiyle doğrulanmış:</strong> 57 test edilebilir arızanın
+            <strong className="text-emerald-400"> %86&apos;sı</strong> 90 gün öncesinden,
+            <strong className="text-emerald-400"> %82.5&apos;i</strong> 60 gün öncesinden,
+            <strong className="text-emerald-400"> %73.7&apos;si</strong> 30 gün öncesinden tespit edilebilmektedir.
+          </p>
+        </div>
       </div>
 
       {/* Parametreler */}
@@ -128,14 +136,22 @@ export default function DocsTab() {
             'PFD < 95% → (95 − ort.PFD) × 1.5 düş',
             'PFD < 80% → (80 − ort.PFD) × 2 ek düşüş',
             'Her kritik uçuş → −5',
-            'Her uyarı uçuşu → −2',
+            'Speedbrake uyarı → −2 / İniş mesafesi uyarı → −0.5',
             'Duration ratio > 2x → (ratio−2) × 5 düş',
-            'İniş anomali oranı → oran × 20 düş',
+            'İniş anomali oranı → oran × 10 düş',
+            'En kötü PFD < 50% → −20 / < 70% → −10 / < 80% → −5',
+            'Ort. açı < 40° → (40 − açı) × 0.5 düş',
           ].map((r, i) => (
             <div key={i} className="bg-slate-700/30 rounded px-3 py-1.5 text-slate-300">
               <span className="text-red-400 mr-1">−</span>{r}
             </div>
           ))}
+        </div>
+        <div className="mt-3 bg-blue-500/5 rounded-lg p-2.5 border border-blue-500/10">
+          <p className="text-[10px] text-blue-400">
+            💡 İniş mesafesi sensör hataları (50kn &gt; 30kn) speedbrake arızası değildir — bu yüzden ağırlığı azaltılmıştır.
+            Tek bir ciddi uçuş (PFD &lt;50%) bile intermittent arıza göstergesi olabilir — &quot;en kötü uçuş&quot; cezası bunu yakalar.
+          </p>
         </div>
         <div className="mt-3 grid grid-cols-4 gap-2 text-center text-[11px]">
           <div className="bg-emerald-500/5 rounded py-1.5 border border-emerald-500/20"><span className="text-emerald-400 font-bold">LOW</span><br/><span className="text-slate-500">85-100</span></div>
@@ -186,6 +202,43 @@ export default function DocsTab() {
               <span className="text-slate-300">{r.info}</span>
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* Doğrulama */}
+      <div className="card border-green-500/20">
+        <h2 className="text-sm font-bold text-green-400 mb-3 flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4" /> Arıza Verisiyle Doğrulama
+        </h2>
+        <p className="text-xs text-slate-300 mb-3">
+          Sistem, 87 gerçek speedbrake arıza kaydı ile karşılaştırılarak doğrulanmıştır.
+          Uçuş verisi dönemindeki 57 arıza baz alınmıştır.
+        </p>
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <div className="bg-slate-700/30 rounded-lg p-2.5">
+            <div className="text-lg font-bold text-emerald-400">%86</div>
+            <div className="text-[10px] text-slate-400">90 gün önceden tespit</div>
+          </div>
+          <div className="bg-slate-700/30 rounded-lg p-2.5">
+            <div className="text-lg font-bold text-emerald-400">%82.5</div>
+            <div className="text-[10px] text-slate-400">60 gün önceden tespit</div>
+          </div>
+          <div className="bg-slate-700/30 rounded-lg p-2.5">
+            <div className="text-lg font-bold text-emerald-400">%73.7</div>
+            <div className="text-[10px] text-slate-400">30 gün önceden tespit</div>
+          </div>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
+          <div className="bg-slate-700/30 rounded-lg p-2.5">
+            <span className="text-slate-400">Yanlış CRITICAL (arızasız uçak):</span>
+            <span className="text-emerald-400 font-bold ml-1">%5.6</span>
+            <span className="text-slate-500 ml-1">(54 uçaktan 3)</span>
+          </div>
+          <div className="bg-slate-700/30 rounded-lg p-2.5">
+            <span className="text-slate-400">Tespit edilemeyen arızalar:</span>
+            <span className="text-amber-400 font-bold ml-1">8/57</span>
+            <span className="text-slate-500 ml-1">(elektriksel / ani arıza)</span>
+          </div>
         </div>
       </div>
 

@@ -1,6 +1,8 @@
 // ============================================================
 // B737 Speedbrake Predictive Maintenance — Analytics engine
 // Optimized: single-pass aggregations, Map-based grouping
+// Updated: Landing distance warning weight reduced,
+//          worst-flight penalty added to health score
 // ============================================================
 import {
   FlightRecord,
@@ -27,11 +29,13 @@ export function computeTailHealthScores(data: FlightRecord[]): TailHealthScore[]
     l30Sum: number; l30Count: number;
     l50Sum: number; l50Count: number;
     criticalCount: number; warningCount: number;
+    ldOnlyWarningCount: number; // warnings caused ONLY by landing distance inversion
     drSum: number; drCount: number;
     ldAnomalyCount: number;
     firstHalfPfd: number[]; secondHalfPfd: number[];
     lastDate: string;
-    sortedPfds: number[]; // we'll accumulate for trend
+    sortedPfds: number[];
+    worstPfd: number; // lowest normalized PFD seen
   }>();
 
   // First pass — accumulate
@@ -49,24 +53,43 @@ export function computeTailHealthScores(data: FlightRecord[]): TailHealthScore[]
         l30Sum: 0, l30Count: 0,
         l50Sum: 0, l50Count: 0,
         criticalCount: 0, warningCount: 0,
+        ldOnlyWarningCount: 0,
         drSum: 0, drCount: 0,
         ldAnomalyCount: 0,
         firstHalfPfd: [], secondHalfPfd: [],
         lastDate: '',
         sortedPfds: [],
+        worstPfd: 999,
       };
       tailAgg.set(d.tailNumber, agg);
     }
 
     agg.flights++;
-    if (d.normalizedPfd > 0 && d.normalizedPfd <= 105) { agg.pfdSum += d.normalizedPfd; agg.pfdCount++; agg.sortedPfds.push(d.normalizedPfd); }
+    if (d.normalizedPfd > 0 && d.normalizedPfd <= 105) {
+      agg.pfdSum += d.normalizedPfd;
+      agg.pfdCount++;
+      agg.sortedPfds.push(d.normalizedPfd);
+      if (d.normalizedPfd < agg.worstPfd) agg.worstPfd = d.normalizedPfd;
+    }
     if (d.pfdTurn1Deg > 0 && d.pfdTurn1Deg < 100) { agg.degSum += d.pfdTurn1Deg; agg.degCount++; }
     if (d.durationDerivative > 0) { agg.durDerivSum += d.durationDerivative; agg.durDerivCount++; }
     if (d.durationExtTo99 > 0) { agg.durExtSum += d.durationExtTo99; agg.durExtCount++; }
     if (d.landingDist30kn > 0) { agg.l30Sum += d.landingDist30kn; agg.l30Count++; }
     if (d.landingDist50kn > 0) { agg.l50Sum += d.landingDist50kn; agg.l50Count++; }
     if (d.anomalyLevel === 'critical') agg.criticalCount++;
-    if (d.anomalyLevel === 'warning') agg.warningCount++;
+    if (d.anomalyLevel === 'warning') {
+      agg.warningCount++;
+      // Check if this warning is ONLY from landing distance inversion
+      // A warning with score 16-39 where landing distance contributes 30 pts
+      // means without LD the score would be < 16 → not a real speedbrake warning
+      const isLdAnomaly = d.landingDistAnomaly;
+      const hasSpeedbrakeIssue = d.normalizedPfd < 92 ||
+        (d.durationRatio > 3 && d.durationExtTo99 > 4) ||
+        (d.pfdTurn1Deg > 0 && d.pfdTurn1Deg < 25 && d.normalizedPfd < 80);
+      if (isLdAnomaly && !hasSpeedbrakeIssue) {
+        agg.ldOnlyWarningCount++;
+      }
+    }
     if (d.durationRatio > 0 && d.durationRatio < 50) { agg.drSum += d.durationRatio; agg.drCount++; }
     if (d.landingDistAnomaly) agg.ldAnomalyCount++;
     if (d.flightDate > agg.lastDate) agg.lastDate = d.flightDate;
@@ -83,16 +106,47 @@ export function computeTailHealthScores(data: FlightRecord[]): TailHealthScore[]
     const avgLanding50 = agg.l50Count > 0 ? agg.l50Sum / agg.l50Count : 0;
     const durationRatioAvg = agg.drCount > 0 ? agg.drSum / agg.drCount : 0;
     const landingDistAnomalyRate = agg.ldAnomalyCount / Math.max(agg.flights, 1);
+    const worstPfd = agg.worstPfd === 999 ? 0 : agg.worstPfd;
 
+    // Separate warning counts
+    const realWarningCount = agg.warningCount - agg.ldOnlyWarningCount;
+    const ldOnlyWarningCount = agg.ldOnlyWarningCount;
+
+    // ============================================================
     // Health score 0–100
+    // UPDATED: Landing distance warnings weighted less,
+    //          worst-flight penalty added
+    // ============================================================
     let hs = 100;
+
+    // Average PFD penalty
     if (avgPfd < 95) hs -= (95 - avgPfd) * 1.5;
     if (avgPfd < 80) hs -= (80 - avgPfd) * 2;
+
+    // Critical flights: -5 each
     hs -= agg.criticalCount * 5;
-    hs -= agg.warningCount * 2;
+
+    // Warnings: differentiate by type
+    // Real speedbrake warnings (PFD/angle/duration issues): full weight
+    hs -= realWarningCount * 2;
+    // Landing-distance-only warnings (sensor/data quality): reduced weight
+    hs -= ldOnlyWarningCount * 0.5;
+
+    // Duration ratio penalty
     if (durationRatioAvg > 2) hs -= (durationRatioAvg - 2) * 5;
-    hs -= landingDistAnomalyRate * 20;
+
+    // Landing distance anomaly rate: reduced from 20 to 10
+    hs -= landingDistAnomalyRate * 10;
+
+    // Low average angle
     if (avgDeg < 40) hs -= (40 - avgDeg) * 0.5;
+
+    // NEW: Worst single flight penalty
+    // Even one very bad flight is a strong signal of intermittent failure
+    if (worstPfd > 0 && worstPfd < 50) hs -= 20;
+    else if (worstPfd > 0 && worstPfd < 70) hs -= 10;
+    else if (worstPfd > 0 && worstPfd < 80) hs -= 5;
+
     hs = Math.max(0, Math.min(100, hs));
 
     let riskLevel: TailHealthScore['riskLevel'] = 'LOW';
