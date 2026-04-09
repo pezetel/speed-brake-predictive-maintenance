@@ -144,7 +144,7 @@ export function generatePredictiveInsights(
             `${f.flightDate} ${f.takeoffAirport}→${f.landingAirport}: PFD=${f.pfdTurn1.toFixed(1)}, DEG=${f.pfdTurn1Deg.toFixed(1)}°`,
         ),
         recommendation:
-          'Speedbrake mekanik bağlantılarını, rulmanları ve actuator linkage'ı kontrol edin. Fiziksel engel/hasar muayenesi yapın.',
+          `Speedbrake mekanik bağlantılarını, rulmanları ve actuator linkage'ı kontrol edin. Fiziksel engel/hasar muayenesi yapın.`,
         relatedFlights: mechFail.length,
         confidence: Math.min(95, 70 + mechFail.length * 10),
       });

@@ -1,7 +1,7 @@
 'use client';
 
 import { AnomalySummary } from '@/lib/types';
-import { AlertTriangle, CheckCircle, Plane, Gauge, Timer, Ruler, TrendingDown, Wrench } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Plane, Gauge, Timer, Ruler, Wrench } from 'lucide-react';
 
 interface Props {
   summary: AnomalySummary;
@@ -9,62 +9,14 @@ interface Props {
 
 export default function KPICards({ summary }: Props) {
   const cards = [
-    {
-      label: 'Toplam Uçuş',
-      value: summary.totalFlights.toLocaleString(),
-      sub: `${summary.uniqueTails} uçak (${summary.uniqueNGTails} NG · ${summary.uniqueMAXTails} MAX)`,
-      icon: <Plane className="w-5 h-5" />,
-      color: 'blue',
-    },
-    {
-      label: 'Kritik Anomali',
-      value: summary.criticalCount.toString(),
-      sub: `${summary.problematicTails.length} farklı uçak`,
-      icon: <AlertTriangle className="w-5 h-5" />,
-      color: 'red',
-    },
-    {
-      label: 'Uyarı',
-      value: summary.warningCount.toString(),
-      sub: `${((summary.warningCount / Math.max(summary.totalFlights, 1)) * 100).toFixed(1)}% oran`,
-      icon: <AlertTriangle className="w-5 h-5" />,
-      color: 'amber',
-    },
-    {
-      label: 'Normal',
-      value: summary.normalCount.toString(),
-      sub: `${((summary.normalCount / Math.max(summary.totalFlights, 1)) * 100).toFixed(1)}% sağlıklı`,
-      icon: <CheckCircle className="w-5 h-5" />,
-      color: 'emerald',
-    },
-    {
-      label: 'Ort. PFD',
-      value: summary.avgPFD.toFixed(1) + '%',
-      sub: summary.avgPFD < 95 ? '⚠️ Normalin altında' : '✅ Normal',
-      icon: <Gauge className="w-5 h-5" />,
-      color: summary.avgPFD < 95 ? 'amber' : 'cyan',
-    },
-    {
-      label: 'Ort. Açı (DEG)',
-      value: summary.avgDeg.toFixed(1) + '°',
-      sub: `Ort. Duration: ${summary.avgDuration.toFixed(2)}s`,
-      icon: <Timer className="w-5 h-5" />,
-      color: 'purple',
-    },
-    {
-      label: 'Ort. İniş Mesafesi',
-      value: summary.avgLandingDist.toFixed(0) + 'm',
-      sub: `${summary.landingDistAnomalyCount} mesafe anomalisi`,
-      icon: <Ruler className="w-5 h-5" />,
-      color: 'indigo',
-    },
-    {
-      label: 'Yavaş Açılma',
-      value: summary.slowOpeningCount.toString(),
-      sub: `${summary.mechanicalFailureCount} mekanik arıza`,
-      icon: <Wrench className="w-5 h-5" />,
-      color: 'orange',
-    },
+    { label: 'Toplam Uçuş', value: summary.totalFlights.toLocaleString(), sub: `${summary.uniqueTails} uçak (${summary.uniqueNGTails} NG · ${summary.uniqueMAXTails} MAX)`, icon: <Plane className="w-5 h-5" />, color: 'blue' },
+    { label: 'Kritik Anomali', value: summary.criticalCount.toLocaleString(), sub: `${summary.problematicTails.length} farklı uçak`, icon: <AlertTriangle className="w-5 h-5" />, color: 'red' },
+    { label: 'Uyarı', value: summary.warningCount.toLocaleString(), sub: `${((summary.warningCount / Math.max(summary.totalFlights, 1)) * 100).toFixed(1)}% oran`, icon: <AlertTriangle className="w-5 h-5" />, color: 'amber' },
+    { label: 'Normal', value: summary.normalCount.toLocaleString(), sub: `${((summary.normalCount / Math.max(summary.totalFlights, 1)) * 100).toFixed(1)}% sağlıklı`, icon: <CheckCircle className="w-5 h-5" />, color: 'emerald' },
+    { label: 'Ort. PFD', value: summary.avgPFD.toFixed(1) + '%', sub: summary.avgPFD < 95 ? '⚠️ Normalin altında' : '✅ Normal', icon: <Gauge className="w-5 h-5" />, color: summary.avgPFD < 95 ? 'amber' : 'cyan' },
+    { label: 'Ort. Açı', value: summary.avgDeg.toFixed(1) + '°', sub: `Süre: ${summary.avgDuration.toFixed(2)}s`, icon: <Timer className="w-5 h-5" />, color: 'purple' },
+    { label: 'Ort. İniş', value: summary.avgLandingDist.toFixed(0) + 'm', sub: `${summary.landingDistAnomalyCount} mesafe anomalisi`, icon: <Ruler className="w-5 h-5" />, color: 'indigo' },
+    { label: 'Yavaş Açılma', value: summary.slowOpeningCount.toLocaleString(), sub: `${summary.mechanicalFailureCount} mekanik arıza`, icon: <Wrench className="w-5 h-5" />, color: 'orange' },
   ];
 
   const colorMap: Record<string, { bg: string; icon: string; text: string; border: string }> = {
@@ -83,12 +35,10 @@ export default function KPICards({ summary }: Props) {
       {cards.map((card, i) => {
         const c = colorMap[card.color] || colorMap.blue;
         return (
-          <div key={i} className={`card ${c.border} hover:scale-[1.02] transition-transform`}>
+          <div key={i} className={`card ${c.border}`}>
             <div className="flex items-center justify-between mb-2">
               <span className="text-[10px] text-slate-400 uppercase tracking-wider font-medium">{card.label}</span>
-              <div className={`p-1.5 rounded-lg ${c.bg}`}>
-                <span className={c.icon}>{card.icon}</span>
-              </div>
+              <div className={`p-1.5 rounded-lg ${c.bg}`}><span className={c.icon}>{card.icon}</span></div>
             </div>
             <div className={`text-xl font-bold ${c.text} mb-1`}>{card.value}</div>
             <div className="text-[10px] text-slate-500 leading-relaxed">{card.sub}</div>

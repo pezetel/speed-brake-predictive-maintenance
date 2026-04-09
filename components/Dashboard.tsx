@@ -1,21 +1,24 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback, lazy, Suspense, useTransition } from 'react';
 import { FlightRecord, FilterState } from '@/lib/types';
 import { applyFilters, computeSummary } from '@/lib/utils';
 import { computeTailHealthScores, generatePredictiveInsights } from '@/lib/analytics';
+import { debounce } from '@/lib/performance';
 import KPICards from './KPICards';
-import CorrelationHeatmap from './CorrelationHeatmap';
-import ScatterPlot from './ScatterPlot';
-import AnomalyTable from './AnomalyTable';
-import TailTrend from './TailTrend';
-import NGvsMAX from './NGvsMAX';
-import PredictiveInsights from './PredictiveInsights';
-import LandingDistanceAnalysisView from './LandingDistanceAnalysis';
-import TailHealthMatrix from './TailHealthMatrix';
-import FlightTimeline from './FlightTimeline';
 import Filters from './Filters';
-import { Plane, RotateCcw, AlertTriangle, BarChart3, GitCompareArrows, Activity, TrendingUp, Brain, Ruler, Heart, Clock } from 'lucide-react';
+import { Plane, RotateCcw, AlertTriangle, BarChart3, GitCompareArrows, Activity, TrendingUp, Brain, Ruler, Heart, Clock, Loader2 } from 'lucide-react';
+
+// Lazy-load heavy tab components
+const CorrelationHeatmap = lazy(() => import('./CorrelationHeatmap'));
+const ScatterPlot = lazy(() => import('./ScatterPlot'));
+const AnomalyTable = lazy(() => import('./AnomalyTable'));
+const TailTrend = lazy(() => import('./TailTrend'));
+const NGvsMAX = lazy(() => import('./NGvsMAX'));
+const PredictiveInsights = lazy(() => import('./PredictiveInsights'));
+const LandingDistanceAnalysisView = lazy(() => import('./LandingDistanceAnalysis'));
+const TailHealthMatrix = lazy(() => import('./TailHealthMatrix'));
+const FlightTimeline = lazy(() => import('./FlightTimeline'));
 
 interface Props {
   data: FlightRecord[];
@@ -24,8 +27,18 @@ interface Props {
 
 type TabKey = 'overview' | 'correlation' | 'scatter' | 'anomalies' | 'trends' | 'ngmax' | 'predictive' | 'landing' | 'health' | 'timeline';
 
+function TabSpinner() {
+  return (
+    <div className="flex items-center justify-center py-20">
+      <Loader2 className="w-8 h-8 text-blue-400 animate-spin" />
+      <span className="ml-3 text-slate-400 text-sm">Yükleniyor…</span>
+    </div>
+  );
+}
+
 export default function Dashboard({ data, onReset }: Props) {
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
+  const [isPending, startTransition] = useTransition();
   const [filters, setFilters] = useState<FilterState>({
     dateRange: null,
     tails: [],
@@ -34,23 +47,54 @@ export default function Dashboard({ data, onReset }: Props) {
     airport: '',
   });
 
+  // Debounced filter setter — avoids re-computing on every keystroke
+  const debouncedSetFilters = useMemo(
+    () => debounce((f: FilterState) => {
+      startTransition(() => setFilters(f));
+    }, 200),
+    [startTransition],
+  );
+
+  const handleFilterChange = useCallback(
+    (f: FilterState) => debouncedSetFilters(f),
+    [debouncedSetFilters],
+  );
+
+  // Heavy computations memoized
   const filteredData = useMemo(() => applyFilters(data, filters), [data, filters]);
   const summary = useMemo(() => computeSummary(filteredData), [filteredData]);
-  const healthScores = useMemo(() => computeTailHealthScores(filteredData), [filteredData]);
-  const insights = useMemo(() => generatePredictiveInsights(filteredData, healthScores), [filteredData, healthScores]);
+
+  // Only compute these when needed tabs are active
+  const healthScores = useMemo(() => {
+    if (['overview', 'predictive', 'health'].includes(activeTab)) {
+      return computeTailHealthScores(filteredData);
+    }
+    return [];
+  }, [filteredData, activeTab]);
+
+  const insights = useMemo(() => {
+    if (['overview', 'predictive'].includes(activeTab) && healthScores.length > 0) {
+      return generatePredictiveInsights(filteredData, healthScores);
+    }
+    return [];
+  }, [filteredData, healthScores, activeTab]);
 
   const tabs: { key: TabKey; label: string; icon: React.ReactNode; badge?: number }[] = [
     { key: 'overview', label: 'Genel Bakış', icon: <BarChart3 className="w-4 h-4" /> },
-    { key: 'predictive', label: 'Tahminsel Bakım', icon: <Brain className="w-4 h-4" />, badge: insights.filter(i => i.severity === 'critical').length },
+    { key: 'predictive', label: 'Tahminsel Bakım', icon: <Brain className="w-4 h-4" />, badge: insights.filter(i => i.severity === 'critical').length || undefined },
     { key: 'health', label: 'Uçak Sağlığı', icon: <Heart className="w-4 h-4" /> },
     { key: 'correlation', label: 'Korelasyon', icon: <GitCompareArrows className="w-4 h-4" /> },
     { key: 'scatter', label: 'Scatter Plot', icon: <Activity className="w-4 h-4" /> },
-    { key: 'anomalies', label: 'Anomaliler', icon: <AlertTriangle className="w-4 h-4" />, badge: summary.criticalCount },
+    { key: 'anomalies', label: 'Anomaliler', icon: <AlertTriangle className="w-4 h-4" />, badge: summary.criticalCount || undefined },
     { key: 'landing', label: 'İniş Mesafesi', icon: <Ruler className="w-4 h-4" /> },
     { key: 'trends', label: 'Tail Trend', icon: <TrendingUp className="w-4 h-4" /> },
     { key: 'timeline', label: 'Zaman Çizelgesi', icon: <Clock className="w-4 h-4" /> },
     { key: 'ngmax', label: 'NG vs MAX', icon: <Plane className="w-4 h-4" /> },
   ];
+
+  const handleTabChange = useCallback((key: TabKey) => {
+    startTransition(() => setActiveTab(key));
+  }, [startTransition]);
 
   return (
     <div className="min-h-screen">
@@ -64,7 +108,8 @@ export default function Dashboard({ data, onReset }: Props) {
             <div>
               <h1 className="text-lg font-bold text-white">B737 Speedbrake Predictive Maintenance</h1>
               <p className="text-xs text-slate-400">
-                {summary.totalFlights} uçuş · {summary.uniqueTails} uçak · {summary.criticalCount} kritik · {insights.length} insight
+                {summary.totalFlights.toLocaleString()} uçuş · {summary.uniqueTails} uçak · {summary.criticalCount} kritik
+                {isPending && <span className="ml-2 text-blue-400">⏳ Hesaplanıyor…</span>}
               </p>
             </div>
           </div>
@@ -83,7 +128,7 @@ export default function Dashboard({ data, onReset }: Props) {
             {tabs.map(tab => (
               <button
                 key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
+                onClick={() => handleTabChange(tab.key)}
                 className={`flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium rounded-t-lg transition-all whitespace-nowrap
                   ${activeTab === tab.key
                     ? 'bg-slate-800 text-blue-400 border-b-2 border-blue-400'
@@ -105,49 +150,50 @@ export default function Dashboard({ data, onReset }: Props) {
 
       {/* Filters */}
       <div className="max-w-[1800px] mx-auto px-4 pt-4">
-        <Filters data={data} filters={filters} onFilterChange={setFilters} />
+        <Filters data={data} filters={filters} onFilterChange={handleFilterChange} />
       </div>
 
-      {/* Content */}
-      <div className="max-w-[1800px] mx-auto px-4 py-4 animate-fade-in">
-        {activeTab === 'overview' && (
-          <div className="space-y-4">
-            <KPICards summary={summary} />
-            {/* Quick insights banner */}
-            {insights.filter(i => i.severity === 'critical').length > 0 && (
-              <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <Brain className="w-4 h-4 text-red-400" />
-                  <span className="text-sm font-bold text-red-400">Kritik Tahminsel Bakım Uyarıları</span>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                  {insights.filter(i => i.severity === 'critical').slice(0, 6).map(insight => (
-                    <div key={insight.id} className="bg-red-500/5 rounded-lg p-2.5 border border-red-500/10">
-                      <div className="text-xs font-medium text-red-300">{insight.title}</div>
-                      <div className="text-[10px] text-slate-400 mt-1">
-                        {insight.category.toUpperCase()} · %{insight.confidence} güven · {insight.relatedFlights} uçuş
+      {/* Content — only render active tab */}
+      <div className="max-w-[1800px] mx-auto px-4 py-4">
+        <Suspense fallback={<TabSpinner />}>
+          {activeTab === 'overview' && (
+            <div className="space-y-4 animate-fade-in">
+              <KPICards summary={summary} />
+              {insights.filter(i => i.severity === 'critical').length > 0 && (
+                <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Brain className="w-4 h-4 text-red-400" />
+                    <span className="text-sm font-bold text-red-400">Kritik Tahminsel Bakım Uyarıları</span>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {insights.filter(i => i.severity === 'critical').slice(0, 6).map(insight => (
+                      <div key={insight.id} className="bg-red-500/5 rounded-lg p-2.5 border border-red-500/10">
+                        <div className="text-xs font-medium text-red-300">{insight.title}</div>
+                        <div className="text-[10px] text-slate-400 mt-1">
+                          {insight.category.toUpperCase()} · %{insight.confidence} güven · {insight.relatedFlights} uçuş
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
+              )}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <CorrelationHeatmap data={filteredData} />
+                <ScatterPlot data={filteredData} />
               </div>
-            )}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <CorrelationHeatmap data={filteredData} />
-              <ScatterPlot data={filteredData} />
+              <AnomalyTable data={filteredData} maxRows={10} />
             </div>
-            <AnomalyTable data={filteredData} maxRows={10} />
-          </div>
-        )}
-        {activeTab === 'predictive' && <PredictiveInsights insights={insights} data={filteredData} healthScores={healthScores} />}
-        {activeTab === 'health' && <TailHealthMatrix healthScores={healthScores} data={filteredData} />}
-        {activeTab === 'correlation' && <CorrelationHeatmap data={filteredData} fullSize />}
-        {activeTab === 'scatter' && <ScatterPlot data={filteredData} fullSize />}
-        {activeTab === 'anomalies' && <AnomalyTable data={filteredData} />}
-        {activeTab === 'landing' && <LandingDistanceAnalysisView data={filteredData} />}
-        {activeTab === 'trends' && <TailTrend data={filteredData} />}
-        {activeTab === 'timeline' && <FlightTimeline data={filteredData} />}
-        {activeTab === 'ngmax' && <NGvsMAX data={filteredData} />}
+          )}
+          {activeTab === 'predictive' && <PredictiveInsights insights={insights} data={filteredData} healthScores={healthScores} />}
+          {activeTab === 'health' && <TailHealthMatrix healthScores={healthScores} data={filteredData} />}
+          {activeTab === 'correlation' && <CorrelationHeatmap data={filteredData} fullSize />}
+          {activeTab === 'scatter' && <ScatterPlot data={filteredData} fullSize />}
+          {activeTab === 'anomalies' && <AnomalyTable data={filteredData} />}
+          {activeTab === 'landing' && <LandingDistanceAnalysisView data={filteredData} />}
+          {activeTab === 'trends' && <TailTrend data={filteredData} />}
+          {activeTab === 'timeline' && <FlightTimeline data={filteredData} />}
+          {activeTab === 'ngmax' && <NGvsMAX data={filteredData} />}
+        </Suspense>
       </div>
     </div>
   );

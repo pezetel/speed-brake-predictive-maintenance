@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import React, { useMemo, useState, useRef } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { FlightRecord } from '@/lib/types';
 import { AlertTriangle, AlertCircle, ChevronDown, ChevronUp, Search } from 'lucide-react';
 
@@ -9,11 +10,13 @@ interface Props {
   maxRows?: number;
 }
 
+const ROW_HEIGHT = 44;
+
 export default function AnomalyTable({ data, maxRows }: Props) {
   const [sortField, setSortField] = useState<string>('pfdTurn1');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [search, setSearch] = useState('');
-  const [showAll, setShowAll] = useState(false);
+  const parentRef = useRef<HTMLDivElement>(null);
 
   const anomalies = useMemo(() => {
     let filtered = data.filter(d => d.anomalyLevel !== 'normal');
@@ -48,7 +51,15 @@ export default function AnomalyTable({ data, maxRows }: Props) {
     return filtered;
   }, [data, search, sortField, sortDir]);
 
-  const displayed = maxRows && !showAll ? anomalies.slice(0, maxRows) : anomalies;
+  const displayedRows = maxRows ? anomalies.slice(0, maxRows) : anomalies;
+  const useVirtual = !maxRows && displayedRows.length > 100;
+
+  const virtualizer = useVirtualizer({
+    count: useVirtual ? displayedRows.length : 0,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: 20,
+  });
 
   const toggleSort = (field: string) => {
     if (sortField === field) {
@@ -78,13 +89,53 @@ export default function AnomalyTable({ data, maxRows }: Props) {
     { key: 'landingDist50kn', label: 'Dist 50kn', w: 'w-24' },
   ];
 
+  const renderRow = (row: FlightRecord, i: number) => (
+    <tr
+      key={i}
+      className={`border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors ${
+        row.anomalyLevel === 'critical' ? 'bg-red-500/5' : ''
+      }`}
+      style={useVirtual ? { height: ROW_HEIGHT } : undefined}
+    >
+      <td className="px-2 py-2">
+        {row.anomalyLevel === 'critical' ? (
+          <span className="badge-danger flex items-center gap-1 w-fit">
+            <AlertTriangle className="w-3 h-3" /> Kritik
+          </span>
+        ) : (
+          <span className="badge-warning flex items-center gap-1 w-fit">
+            <AlertCircle className="w-3 h-3" /> Uyarı
+          </span>
+        )}
+      </td>
+      <td className="px-2 py-2 text-slate-300">{row.flightDate}</td>
+      <td className="px-2 py-2 font-mono font-bold text-white">{row.tailNumber}</td>
+      <td className="px-2 py-2 text-slate-300">{row.takeoffAirport}→{row.landingAirport}</td>
+      <td className={`px-2 py-2 font-mono font-bold ${
+        row.pfdTurn1 < 80 ? 'text-red-400' : row.pfdTurn1 < 95 ? 'text-amber-400' : 'text-slate-200'
+      }`}>
+        {row.pfdTurn1.toFixed(1)}
+      </td>
+      <td className="px-2 py-2 text-slate-300">{row.pfdTurn1Deg.toFixed(1)}</td>
+      <td className="px-2 py-2 text-slate-300">{row.pfeTo99Deg.toFixed(1)}</td>
+      <td className="px-2 py-2 text-slate-300">{row.durationDerivative.toFixed(2)}</td>
+      <td className={`px-2 py-2 font-mono ${
+        row.durationExtTo99 > 5 ? 'text-red-400 font-bold' : row.durationExtTo99 > 3 ? 'text-amber-400' : 'text-slate-300'
+      }`}>
+        {row.durationExtTo99.toFixed(2)}
+      </td>
+      <td className="px-2 py-2 text-slate-300">{row.landingDist30kn.toFixed(0)}</td>
+      <td className="px-2 py-2 text-slate-300">{row.landingDist50kn.toFixed(0)}</td>
+    </tr>
+  );
+
   return (
     <div className="card">
       <div className="flex items-center justify-between mb-4">
         <div className="card-header mb-0 flex items-center gap-2">
           <AlertTriangle className="w-4 h-4 text-red-400" />
           Anomali Listesi
-          <span className="badge-danger">{anomalies.length}</span>
+          <span className="badge-danger">{anomalies.length.toLocaleString()}</span>
         </div>
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
@@ -98,9 +149,13 @@ export default function AnomalyTable({ data, maxRows }: Props) {
         </div>
       </div>
 
-      <div className="overflow-x-auto">
+      <div
+        ref={parentRef}
+        className="overflow-x-auto"
+        style={useVirtual ? { maxHeight: '70vh', overflowY: 'auto' } : undefined}
+      >
         <table className="w-full text-xs">
-          <thead>
+          <thead className="sticky top-0 z-10 bg-slate-800">
             <tr className="border-b border-slate-700">
               {columns.map(col => (
                 <th
@@ -114,71 +169,32 @@ export default function AnomalyTable({ data, maxRows }: Props) {
                   </div>
                 </th>
               ))}
-              <th className="px-2 py-2 text-left text-slate-400 font-medium">Sebepler</th>
             </tr>
           </thead>
           <tbody>
-            {displayed.map((row, i) => (
-              <tr
-                key={i}
-                className={`border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors ${
-                  row.anomalyLevel === 'critical' ? 'bg-red-500/5' : ''
-                }`}
-              >
-                <td className="px-2 py-2">
-                  {row.anomalyLevel === 'critical' ? (
-                    <span className="badge-danger flex items-center gap-1 w-fit">
-                      <AlertTriangle className="w-3 h-3" /> Kritik
-                    </span>
-                  ) : (
-                    <span className="badge-warning flex items-center gap-1 w-fit">
-                      <AlertCircle className="w-3 h-3" /> Uyarı
-                    </span>
-                  )}
-                </td>
-                <td className="px-2 py-2 text-slate-300">{row.flightDate}</td>
-                <td className="px-2 py-2 font-mono font-bold text-white">{row.tailNumber}</td>
-                <td className="px-2 py-2 text-slate-300">{row.takeoffAirport}→{row.landingAirport}</td>
-                <td className={`px-2 py-2 font-mono font-bold ${
-                  row.pfdTurn1 < 80 ? 'text-red-400' : row.pfdTurn1 < 95 ? 'text-amber-400' : 'text-slate-200'
-                }`}>
-                  {row.pfdTurn1.toFixed(1)}
-                </td>
-                <td className="px-2 py-2 text-slate-300">{row.pfdTurn1Deg.toFixed(1)}</td>
-                <td className="px-2 py-2 text-slate-300">{row.pfeTo99Deg.toFixed(1)}</td>
-                <td className="px-2 py-2 text-slate-300">{row.durationDerivative.toFixed(2)}</td>
-                <td className={`px-2 py-2 font-mono ${
-                  row.durationExtTo99 > 5 ? 'text-red-400 font-bold' : row.durationExtTo99 > 3 ? 'text-amber-400' : 'text-slate-300'
-                }`}>
-                  {row.durationExtTo99.toFixed(2)}
-                </td>
-                <td className="px-2 py-2 text-slate-300">{row.landingDist30kn.toFixed(0)}</td>
-                <td className="px-2 py-2 text-slate-300">{row.landingDist50kn.toFixed(0)}</td>
-                <td className="px-2 py-2">
-                  <div className="flex flex-wrap gap-1">
-                    {row.anomalyReasons.map((r, j) => (
-                      <span key={j} className="text-[10px] bg-slate-700/80 text-slate-300 px-1.5 py-0.5 rounded">
-                        {r}
-                      </span>
-                    ))}
-                  </div>
-                </td>
-              </tr>
-            ))}
+            {useVirtual ? (
+              <>
+                {/* spacer top */}
+                {virtualizer.getVirtualItems().length > 0 && (
+                  <tr style={{ height: virtualizer.getVirtualItems()[0]?.start ?? 0 }}>
+                    <td colSpan={columns.length} />
+                  </tr>
+                )}
+                {virtualizer.getVirtualItems().map(vRow => {
+                  const row = displayedRows[vRow.index];
+                  return renderRow(row, vRow.index);
+                })}
+                {/* spacer bottom */}
+                <tr style={{ height: virtualizer.getTotalSize() - (virtualizer.getVirtualItems().at(-1)?.end ?? 0) }}>
+                  <td colSpan={columns.length} />
+                </tr>
+              </>
+            ) : (
+              displayedRows.map((row, i) => renderRow(row, i))
+            )}
           </tbody>
         </table>
       </div>
-
-      {maxRows && anomalies.length > maxRows && (
-        <div className="text-center mt-3">
-          <button
-            onClick={() => setShowAll(!showAll)}
-            className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
-          >
-            {showAll ? 'Daha az göster' : `Tümünü göster (${anomalies.length})`}
-          </button>
-        </div>
-      )}
 
       {anomalies.length === 0 && (
         <div className="text-center py-8 text-slate-500 text-sm">

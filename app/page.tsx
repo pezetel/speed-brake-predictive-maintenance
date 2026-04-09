@@ -25,10 +25,10 @@ export default function Home() {
             <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent mb-3">
               B737 Speedbrake Analizi
             </h1>
-            <p className="text-slate-400 text-lg mb-2">NG & MAX Speedbrake Arıza Tespit Sistemi</p>
+            <p className="text-slate-400 text-lg mb-2">NG & MAX Speedbrake Predictive Maintenance</p>
             <p className="text-slate-500 text-sm mb-10">
               Excel dosyanızı yükleyerek uçuş verilerindeki speedbrake anomalilerini tespit edin.
-              Korelasyon analizi, trend izleme ve NG/MAX karşılaştırması yapın.
+              10.000+ satır desteklenir — sanal tablolar ve akıllı örnekleme ile hızlı çalışır.
             </p>
             <FileUploader onDataLoaded={setData} />
             <div className="mt-10 grid grid-cols-3 gap-4 text-center">
