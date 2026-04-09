@@ -14,7 +14,7 @@ function parseNumberSmart(val: any): number {
   if (val === null || val === undefined || val === '') return 0;
   if (typeof val === 'number') return val;
   const s = String(val).trim();
-  // Pure comma‑decimal (no dot)
+  // Pure comma-decimal (no dot)
   if (s.includes(',') && !s.includes('.')) {
     return parseFloat(s.replace(',', '.')) || 0;
   }
@@ -31,7 +31,7 @@ function parseNumberSmart(val: any): number {
 }
 
 // ----------------------------------------------------------------
-// Aircraft‑type heuristic
+// Aircraft-type heuristic
 // ----------------------------------------------------------------
 export function detectAircraftType(tail: string): 'NG' | 'MAX' {
   if (!tail) return 'NG';
@@ -44,7 +44,7 @@ export function detectAircraftType(tail: string): 'NG' | 'MAX' {
 }
 
 // ----------------------------------------------------------------
-// Per‑record anomaly detection
+// Per-record anomaly detection
 // ----------------------------------------------------------------
 export function detectAnomaly(
   record: Omit<FlightRecord, 'anomalyLevel' | 'anomalyReasons'>,
@@ -77,7 +77,7 @@ export function detectAnomaly(
     }
   }
 
-  // 3. Absolute extension‑to‑99 duration
+  // 3. Absolute extension-to-99 duration
   if (record.durationExtTo99 > 10) {
     level = 'critical';
     reasons.push(`%99 uzama süresi aşırı yüksek: ${record.durationExtTo99.toFixed(1)}s`);
@@ -141,15 +141,83 @@ export function detectAnomaly(
 export function parseExcelData(rows: any[]): FlightRecord[] {
   const records: FlightRecord[] = [];
 
-  for (const row of rows) {
-    const vals = Object.values(row);
-    if (vals.length < 12) continue;
+  // Try to detect column mapping from header row
+  const firstRow = rows[0];
+  const keys = firstRow ? Object.keys(firstRow) : [];
 
-    const tailNumber = String(vals[1] || '').trim().toUpperCase();
+  // Build column index mapping (flexible header detection)
+  function findColIndex(patterns: string[]): string | null {
+    for (const key of keys) {
+      const upper = key.toUpperCase();
+      for (const p of patterns) {
+        if (upper.includes(p.toUpperCase())) return key;
+      }
+    }
+    return null;
+  }
+
+  const colDate = findColIndex(['FLIGHT_DATE', 'DATE', 'TARIH']);
+  const colTail = findColIndex(['TAIL_NUMBER', 'TAIL', 'KUYRUK']);
+  const colTakeoff = findColIndex(['TAKEOFF_AIRPORT', 'TAKEOFF', 'KALKIS']);
+  const colLanding = findColIndex(['LANDING_AIRPORT', 'LANDING_AIRPORT_CODE', 'INIS']);
+  const colPfd = findColIndex(['PFD_TURN_1)', 'PFD_TURN_1', 'SBLE_PFD_TURN_1)']);
+  const colDurDeriv = findColIndex(['DERIVATIVE_TURN_1', 'DURATION_BASED_ON_DERIVATIVE']);
+  const colDurExt = findColIndex(['EXTENSION_TO_99', 'DURATION_BASED_ON_EXTENSION']);
+  const colPfdDeg = findColIndex(['PFD_TURN_1_DEG', 'TURN_1_DEG)']);
+  const colPfeDeg = findColIndex(['PFE_TO_99_DEG', 'PFE_TO_99']);
+  const colLand30 = findColIndex(['30_KNOT', 'FOR_30_KNOT', '30KN']);
+  const colLand50 = findColIndex(['50_KNOT', 'FOR_50_KNOT', '50KN']);
+  const colGs = findColIndex(['GS_AT_AUTO', 'SBOP_SEC', 'GS_AT_AUTO_SBOP']);
+
+  for (const row of rows) {
+    let tailNumber: string;
+    let dateVal: any;
+    let takeoffAirport: string;
+    let landingAirport: string;
+    let pfdTurn1: number;
+    let durationDerivative: number;
+    let durationExtTo99: number;
+    let pfdTurn1Deg: number;
+    let pfeTo99Deg: number;
+    let landingDist30kn: number;
+    let landingDist50kn: number;
+    let gsAtAutoSbop: number;
+
+    if (colTail) {
+      // Named columns detected
+      dateVal = row[colDate || ''];
+      tailNumber = String(row[colTail] || '').trim().toUpperCase();
+      takeoffAirport = String(row[colTakeoff || ''] || '').trim().toUpperCase();
+      landingAirport = String(row[colLanding || ''] || '').trim().toUpperCase();
+      pfdTurn1 = parseNumberSmart(row[colPfd || '']);
+      durationDerivative = parseNumberSmart(row[colDurDeriv || '']);
+      durationExtTo99 = parseNumberSmart(row[colDurExt || '']);
+      pfdTurn1Deg = parseNumberSmart(row[colPfdDeg || '']);
+      pfeTo99Deg = parseNumberSmart(row[colPfeDeg || '']);
+      landingDist30kn = parseNumberSmart(row[colLand30 || '']);
+      landingDist50kn = parseNumberSmart(row[colLand50 || '']);
+      gsAtAutoSbop = parseNumberSmart(row[colGs || '']);
+    } else {
+      // Fallback: positional columns
+      const vals = Object.values(row);
+      if (vals.length < 12) continue;
+      dateVal = vals[0];
+      tailNumber = String(vals[1] || '').trim().toUpperCase();
+      takeoffAirport = String(vals[2] || '').trim().toUpperCase();
+      landingAirport = String(vals[3] || '').trim().toUpperCase();
+      pfdTurn1 = parseNumberSmart(vals[4]);
+      durationDerivative = parseNumberSmart(vals[5]);
+      durationExtTo99 = parseNumberSmart(vals[6]);
+      pfdTurn1Deg = parseNumberSmart(vals[7]);
+      pfeTo99Deg = parseNumberSmart(vals[8]);
+      landingDist30kn = parseNumberSmart(vals[9]);
+      landingDist50kn = parseNumberSmart(vals[10]);
+      gsAtAutoSbop = parseNumberSmart(vals[11]);
+    }
+
     if (!tailNumber || !tailNumber.startsWith('TC-')) continue;
 
     // ---- date handling ----
-    let dateVal = vals[0];
     let flightDate = '';
     if (dateVal instanceof Date) {
       flightDate = dateVal.toISOString().split('T')[0];
@@ -165,21 +233,22 @@ export function parseExcelData(rows: any[]): FlightRecord[] {
         const month = parts[1].padStart(2, '0');
         const year = parts[2].length === 2 ? '20' + parts[2] : parts[2];
         flightDate = `${year}-${month}-${day}`;
+      } else if (s.includes('-')) {
+        flightDate = s;
+      } else if (s.includes('/')) {
+        const p = s.split('/');
+        if (p.length === 3) {
+          const month = p[0].padStart(2, '0');
+          const day = p[1].padStart(2, '0');
+          const year = p[2].length === 2 ? '20' + p[2] : p[2];
+          flightDate = `${year}-${month}-${day}`;
+        } else {
+          flightDate = s;
+        }
       } else {
         flightDate = s;
       }
     }
-
-    const takeoffAirport = String(vals[2] || '').trim().toUpperCase();
-    const landingAirport = String(vals[3] || '').trim().toUpperCase();
-    const pfdTurn1 = parseNumberSmart(vals[4]);
-    const durationDerivative = parseNumberSmart(vals[5]);
-    const durationExtTo99 = parseNumberSmart(vals[6]);
-    const pfdTurn1Deg = parseNumberSmart(vals[7]);
-    const pfeTo99Deg = parseNumberSmart(vals[8]);
-    const landingDist30kn = parseNumberSmart(vals[9]);
-    const landingDist50kn = parseNumberSmart(vals[10]);
-    const gsAtAutoSbop = parseNumberSmart(vals[11]);
 
     const aircraftType = detectAircraftType(tailNumber);
     const isDoubledRecord = pfdTurn1 > 150;

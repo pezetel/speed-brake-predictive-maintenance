@@ -26,7 +26,7 @@ export interface FlightRecord {
   landingDistAnomaly: boolean; // 50kn > 30kn
 }
 
-/** Aggregated KPI summary for the currently‑filtered data set */
+/** Aggregated KPI summary for the currently-filtered data set */
 export interface AnomalySummary {
   totalFlights: number;
   criticalCount: number;
@@ -56,7 +56,7 @@ export interface FilterState {
   airport: string;
 }
 
-/** Per‑tail health score produced by analytics */
+/** Per-tail health score produced by analytics */
 export interface TailHealthScore {
   tailNumber: string;
   aircraftType: 'NG' | 'MAX';
@@ -69,7 +69,7 @@ export interface TailHealthScore {
   avgLanding50: number;
   criticalCount: number;
   warningCount: number;
-  healthScore: number;           // 0‑100
+  healthScore: number;           // 0-100
   riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
   trend: 'improving' | 'stable' | 'degrading';
   durationRatioAvg: number;
@@ -78,7 +78,7 @@ export interface TailHealthScore {
   degradationRate: number;       // PFD drop first→second half
 }
 
-/** A single predictive‑maintenance insight card */
+/** A single predictive-maintenance insight card */
 export interface PredictiveInsight {
   id: string;
   tailNumber: string;
@@ -89,10 +89,10 @@ export interface PredictiveInsight {
   evidence: string[];
   recommendation: string;
   relatedFlights: number;
-  confidence: number;            // 0‑100
+  confidence: number;            // 0-100
 }
 
-/** Landing‑distance detail row */
+/** Landing-distance detail row */
 export interface LandingDistanceAnalysisRecord {
   tailNumber: string;
   route: string;
