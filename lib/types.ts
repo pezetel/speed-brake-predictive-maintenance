@@ -1,26 +1,32 @@
+// ============================================================
+// B737 Speedbrake Predictive Maintenance — Shared Types
+// ============================================================
+
+/** One row coming out of the uploaded Excel file after parsing */
 export interface FlightRecord {
-  flightDate: string;
-  tailNumber: string;
-  takeoffAirport: string;
-  landingAirport: string;
-  pfdTurn1: number;
-  durationDerivative: number;
-  durationExtTo99: number;
-  pfdTurn1Deg: number;
-  pfeTo99Deg: number;
-  landingDist30kn: number;
-  landingDist50kn: number;
-  gsAtAutoSbop: number;
+  flightDate: string;        // ISO yyyy-mm-dd
+  tailNumber: string;        // e.g. TC-SPB
+  takeoffAirport: string;    // IATA code
+  landingAirport: string;    // IATA code
+  pfdTurn1: number;          // raw PFD Turn 1 %
+  durationDerivative: number;// seconds
+  durationExtTo99: number;   // seconds
+  pfdTurn1Deg: number;       // degrees
+  pfeTo99Deg: number;        // degrees
+  landingDist30kn: number;   // metres
+  landingDist50kn: number;   // metres
+  gsAtAutoSbop: number;      // seconds from SOF
   aircraftType: 'NG' | 'MAX';
   anomalyLevel: 'normal' | 'warning' | 'critical';
   anomalyReasons: string[];
-  // computed fields
-  isDoubledRecord: boolean;
-  normalizedPfd: number;
-  durationRatio: number;
-  landingDistAnomaly: boolean;
+  // ---- computed helpers ----
+  isDoubledRecord: boolean;  // PFD > 150 → probably two panels summed
+  normalizedPfd: number;     // doubled records divided back
+  durationRatio: number;     // extTo99 / derivative
+  landingDistAnomaly: boolean; // 50kn > 30kn
 }
 
+/** Aggregated KPI summary for the currently‑filtered data set */
 export interface AnomalySummary {
   totalFlights: number;
   criticalCount: number;
@@ -41,12 +47,7 @@ export interface AnomalySummary {
   mechanicalFailureCount: number;
 }
 
-export interface CorrelationData {
-  xKey: string;
-  yKey: string;
-  value: number;
-}
-
+/** Filter state shared between all dashboard views */
 export interface FilterState {
   dateRange: [string, string] | null;
   tails: string[];
@@ -55,6 +56,7 @@ export interface FilterState {
   airport: string;
 }
 
+/** Per‑tail health score produced by analytics */
 export interface TailHealthScore {
   tailNumber: string;
   aircraftType: 'NG' | 'MAX';
@@ -67,15 +69,16 @@ export interface TailHealthScore {
   avgLanding50: number;
   criticalCount: number;
   warningCount: number;
-  healthScore: number;
+  healthScore: number;           // 0‑100
   riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
   trend: 'improving' | 'stable' | 'degrading';
   durationRatioAvg: number;
   landingDistAnomalyRate: number;
   lastFlightDate: string;
-  degradationRate: number;
+  degradationRate: number;       // PFD drop first→second half
 }
 
+/** A single predictive‑maintenance insight card */
 export interface PredictiveInsight {
   id: string;
   tailNumber: string;
@@ -86,9 +89,10 @@ export interface PredictiveInsight {
   evidence: string[];
   recommendation: string;
   relatedFlights: number;
-  confidence: number;
+  confidence: number;            // 0‑100
 }
 
+/** Landing‑distance detail row */
 export interface LandingDistanceAnalysisRecord {
   tailNumber: string;
   route: string;
@@ -101,6 +105,7 @@ export interface LandingDistanceAnalysisRecord {
   riskScore: number;
 }
 
+/** Single entry for timeline view */
 export interface FlightTimelineEntry {
   date: string;
   tailNumber: string;
