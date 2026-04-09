@@ -2,10 +2,11 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import { PredictiveInsight, FlightRecord, TailHealthScore } from '@/lib/types';
+import { exportPredictiveInsights } from '@/lib/export-excel';
 import {
   Brain, AlertTriangle, Droplets, Wrench, Cpu, Radio, Plane,
   ChevronDown, ChevronUp, ShieldAlert, Search, Filter, X,
-  TrendingDown, TrendingUp, Minus, Eye
+  TrendingDown, TrendingUp, Minus, Eye, Download
 } from 'lucide-react';
 
 interface Props {
@@ -200,6 +201,10 @@ export default function PredictiveInsights({ insights, data, healthScores }: Pro
   const collapseAllTails = useCallback(() => {
     setExpandedTails(new Set());
   }, []);
+
+  const handleExportExcel = useCallback(() => {
+    exportPredictiveInsights(insights, healthScores);
+  }, [insights, healthScores]);
 
   const selectedHealth = selectedTail ? tailHealthMap.get(selectedTail) ?? null : null;
 
@@ -426,6 +431,14 @@ export default function PredictiveInsights({ insights, data, healthScores }: Pro
           </span>
 
           <div className="ml-auto flex gap-1">
+            <button
+              onClick={handleExportExcel}
+              className="text-[10px] flex items-center gap-1.5 text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 px-3 py-1.5 rounded-lg transition-colors border border-emerald-500/20"
+              title="Tahminsel bakım verilerini Excel olarak indir"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Excel İndir
+            </button>
             <button onClick={expandAllTails} className="text-[10px] text-slate-400 hover:text-slate-200 bg-slate-700/50 px-2 py-1 rounded-lg transition-colors">
               Hepsini Aç
             </button>

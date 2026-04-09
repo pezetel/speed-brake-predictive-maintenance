@@ -1,15 +1,16 @@
 'use client';
 
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useCallback } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { FlightRecord } from '@/lib/types';
 import { buildFlightTimeline } from '@/lib/analytics';
 import { stratifiedSample } from '@/lib/performance';
+import { exportFlightTimeline } from '@/lib/export-excel';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar, ScatterChart, Scatter, ZAxis, ReferenceLine,
 } from 'recharts';
-import { Clock, AlertTriangle, Search, ChevronDown, ChevronUp, Plane, Activity, TrendingDown } from 'lucide-react';
+import { Clock, AlertTriangle, Search, ChevronDown, ChevronUp, Plane, Activity, TrendingDown, Download } from 'lucide-react';
 
 interface Props {
   data: FlightRecord[];
@@ -111,6 +112,19 @@ export default function FlightTimeline({ data }: Props) {
     return sortDir === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />;
   };
 
+  // Build filter label for export
+  const buildFilterLabel = useCallback(() => {
+    const parts: string[] = [];
+    if (filterLevel !== 'ALL') parts.push(`Seviye: ${filterLevel === 'critical' ? 'Kritik' : filterLevel === 'warning' ? 'Uyarı' : 'Normal'}`);
+    if (selectedDate) parts.push(`Tarih: ${selectedDate}`);
+    if (search) parts.push(`Arama: ${search}`);
+    return parts.length > 0 ? parts.join(', ') : undefined;
+  }, [filterLevel, selectedDate, search]);
+
+  const handleExportExcel = useCallback(() => {
+    exportFlightTimeline(filteredTimeline, buildFilterLabel());
+  }, [filteredTimeline, buildFilterLabel]);
+
   return (
     <div className="space-y-4 animate-fade-in">
       {/* KPIs */}
@@ -204,6 +218,14 @@ export default function FlightTimeline({ data }: Props) {
             <span className="badge-info">{filteredTimeline.length.toLocaleString()}</span>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={handleExportExcel}
+              className="flex items-center gap-1.5 text-[11px] text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 px-3 py-1.5 rounded-lg transition-colors border border-emerald-500/20"
+              title="Filtrelenmiş zaman çizelgesini Excel olarak indir"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Excel İndir
+            </button>
             <select value={filterLevel} onChange={e => setFilterLevel(e.target.value)} className="bg-slate-700 text-slate-200 text-xs rounded-lg px-2.5 py-1.5 border border-slate-600">
               <option value="ALL">Tüm Seviyeler</option>
               <option value="critical">🔴 Kritik</option>
