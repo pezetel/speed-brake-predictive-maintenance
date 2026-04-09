@@ -1,24 +1,28 @@
 'use client';
 
-import { AircraftHealth, FlightRecord } from '@/lib/types';
-import { getAircraftType, getFieldDescriptions } from '@/lib/data';
-import SpeedbrakeHealthChart from './charts/SpeedbrakeHealthChart';
-import LandingDistanceChart from './charts/LandingDistanceChart';
-import AircraftComparisonRadar from './charts/AircraftComparisonRadar';
+import React, { useMemo } from 'react';
+import { FlightRecord } from '@/lib/types';
+import { TailHealthScore } from '@/lib/types';
+import { getFieldDescriptions } from '@/lib/data';
 import {
   Plane, AlertTriangle, CheckCircle, Info,
   TrendingUp, Timer, Ruler, Gauge
 } from 'lucide-react';
 
 interface Props {
-  healthData: AircraftHealth[];
-  flights: FlightRecord[];
-  onAircraftClick: (tail: string) => void;
+  healthScores: TailHealthScore[];
+  data: FlightRecord[];
+  onAircraftClick?: (tail: string) => void;
 }
 
-export default function FleetOverview({ healthData, flights, onAircraftClick }: Props) {
-  const ngAircraft = healthData.filter(h => h.aircraftType === 'NG');
-  const maxAircraft = healthData.filter(h => h.aircraftType === 'MAX');
+/**
+ * FleetOverview — cleaned up to use the existing TailHealthScore type
+ * from analytics instead of a non-existent AircraftHealth type.
+ * Removed imports of non-existent chart sub-components.
+ */
+export default function FleetOverview({ healthScores, data, onAircraftClick }: Props) {
+  const ngAircraft = useMemo(() => healthScores.filter(h => h.aircraftType === 'NG'), [healthScores]);
+  const maxAircraft = useMemo(() => healthScores.filter(h => h.aircraftType === 'MAX'), [healthScores]);
   const descriptions = getFieldDescriptions();
 
   const avgHealthNG = ngAircraft.length > 0
@@ -28,18 +32,14 @@ export default function FleetOverview({ healthData, flights, onAircraftClick }: 
     ? maxAircraft.reduce((s, h) => s + h.healthScore, 0) / maxAircraft.length
     : 0;
 
-  const getScoreColor = (score: number) => {
-    if (score >= 85) return 'text-sb-success';
-    if (score >= 70) return 'text-sb-warn';
-    if (score >= 50) return 'text-orange-500';
-    return 'text-sb-danger';
-  };
+  const totalAnomalies = healthScores.reduce((s, h) => s + h.criticalCount + h.warningCount, 0);
+  const totalCritical = healthScores.reduce((s, h) => s + h.criticalCount, 0);
 
-  const getScoreBg = (score: number) => {
-    if (score >= 85) return 'bg-sb-success/10 border-sb-success/30';
-    if (score >= 70) return 'bg-sb-warn/10 border-sb-warn/30';
-    if (score >= 50) return 'bg-orange-500/10 border-orange-500/30';
-    return 'bg-sb-danger/10 border-sb-danger/30';
+  const getScoreColor = (score: number) => {
+    if (score >= 85) return 'text-emerald-400';
+    if (score >= 70) return 'text-amber-400';
+    if (score >= 50) return 'text-orange-400';
+    return 'text-red-400';
   };
 
   const getRiskBadge = (risk: string) => {
@@ -59,11 +59,17 @@ export default function FleetOverview({ healthData, flights, onAircraftClick }: 
     CRITICAL: 'Kritik',
   };
 
+  const trendLabel: Record<string, string> = {
+    improving: '📈 İyileşiyor',
+    stable: '➡️ Stabil',
+    degrading: '📉 Kötüleşiyor',
+  };
+
   return (
     <div className="space-y-6">
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="glass-card rounded-xl p-5 glow-blue">
+        <div className="card border-blue-500/20">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-slate-400">737 NG Filo Sağlığı</p>
@@ -78,7 +84,7 @@ export default function FleetOverview({ healthData, flights, onAircraftClick }: 
           </div>
         </div>
 
-        <div className="glass-card rounded-xl p-5 glow-blue">
+        <div className="card border-cyan-500/20">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-slate-400">737 MAX Filo Sağlığı</p>
@@ -93,15 +99,15 @@ export default function FleetOverview({ healthData, flights, onAircraftClick }: 
           </div>
         </div>
 
-        <div className="glass-card rounded-xl p-5 glow-yellow">
+        <div className="card border-amber-500/20">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-slate-400">Toplam Anomali</p>
-              <p className="text-3xl font-bold mt-1 text-sb-warn">
-                {healthData.reduce((s, h) => s + h.anomalies.length, 0)}
+              <p className="text-3xl font-bold mt-1 text-amber-400">
+                {totalAnomalies}
               </p>
               <p className="text-xs text-slate-500 mt-1">
-                {healthData.reduce((s, h) => s + h.anomalies.filter(a => a.severity === 'CRITICAL').length, 0)} kritik
+                {totalCritical} kritik
               </p>
             </div>
             <div className="w-12 h-12 rounded-xl bg-yellow-500/10 flex items-center justify-center">
@@ -110,14 +116,14 @@ export default function FleetOverview({ healthData, flights, onAircraftClick }: 
           </div>
         </div>
 
-        <div className="glass-card rounded-xl p-5 glow-green">
+        <div className="card border-emerald-500/20">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-slate-400">Toplam Uçuş</p>
-              <p className="text-3xl font-bold mt-1 text-sb-success">
-                {flights.length}
+              <p className="text-3xl font-bold mt-1 text-emerald-400">
+                {data.length.toLocaleString()}
               </p>
-              <p className="text-xs text-slate-500 mt-1">8 Nisan 2025</p>
+              <p className="text-xs text-slate-500 mt-1">{healthScores.length} uçak</p>
             </div>
             <div className="w-12 h-12 rounded-xl bg-green-500/10 flex items-center justify-center">
               <CheckCircle size={24} className="text-green-400" />
@@ -127,64 +133,38 @@ export default function FleetOverview({ healthData, flights, onAircraftClick }: 
       </div>
 
       {/* Parameter Descriptions */}
-      <div className="glass-card rounded-xl p-5">
+      <div className="card">
         <div className="flex items-center gap-2 mb-4">
-          <Info size={18} className="text-sb-info" />
+          <Info size={18} className="text-blue-400" />
           <h3 className="font-semibold text-white">Parametre Açıklamaları</h3>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
           {Object.entries(descriptions).map(([key, desc]) => (
-            <div key={key} className="bg-sb-dark/50 rounded-lg p-3">
-              <p className="text-xs font-semibold text-sb-info mb-1">{key}</p>
+            <div key={key} className="bg-slate-700/30 rounded-lg p-3">
+              <p className="text-xs font-semibold text-blue-400 mb-1">{key}</p>
               <p className="text-xs text-slate-400 leading-relaxed">{desc}</p>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Charts Row */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <div className="glass-card rounded-xl p-5">
-          <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
-            <Gauge size={18} className="text-sb-accent" />
-            Speedbrake Sağlık Skoru
-          </h3>
-          <SpeedbrakeHealthChart healthData={healthData} />
-        </div>
-        <div className="glass-card rounded-xl p-5">
-          <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
-            <Ruler size={18} className="text-sb-accent" />
-            İniş Mesafesi Karşılaştırması
-          </h3>
-          <LandingDistanceChart healthData={healthData} />
-        </div>
-      </div>
-
-      {/* Radar Comparison */}
-      <div className="glass-card rounded-xl p-5">
-        <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
-          <TrendingUp size={18} className="text-sb-accent" />
-          NG vs MAX Parametre Karşılaştırması
-        </h3>
-        <AircraftComparisonRadar healthData={healthData} />
-      </div>
-
       {/* Aircraft Grid */}
       <div>
         <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
-          <Plane size={18} className="text-sb-accent" />
-          Uçak Bazlı Durum ({healthData.length} uçak)
+          <Plane size={18} className="text-blue-400" />
+          Uçak Bazlı Durum ({healthScores.length} uçak)
         </h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {healthData
+          {healthScores
+            .slice() // avoid mutating prop
             .sort((a, b) => a.healthScore - b.healthScore)
             .map(ac => (
               <button
                 key={ac.tailNumber}
-                onClick={() => onAircraftClick(ac.tailNumber)}
-                className={`glass-card rounded-xl p-4 text-left transition-all hover:scale-[1.02] hover:shadow-lg ${
-                  ac.riskLevel === 'CRITICAL' ? 'glow-red border-red-500/30' :
-                  ac.riskLevel === 'HIGH' ? 'glow-yellow border-orange-500/30' : ''
+                onClick={() => onAircraftClick?.(ac.tailNumber)}
+                className={`card text-left transition-all hover:scale-[1.02] hover:shadow-lg ${
+                  ac.riskLevel === 'CRITICAL' ? 'border-red-500/30 shadow-red-500/10 shadow-lg' :
+                  ac.riskLevel === 'HIGH' ? 'border-orange-500/30' : ''
                 }`}
               >
                 <div className="flex items-center justify-between mb-3">
@@ -206,15 +186,15 @@ export default function FleetOverview({ healthData, flights, onAircraftClick }: 
                   <div className="flex items-center justify-between text-xs mb-1">
                     <span className="text-slate-400">Sağlık Skoru</span>
                     <span className={`font-bold ${getScoreColor(ac.healthScore)}`}>
-                      {ac.healthScore}%
+                      {ac.healthScore.toFixed(1)}%
                     </span>
                   </div>
-                  <div className="h-2 bg-sb-dark rounded-full overflow-hidden">
+                  <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
                     <div
                       className={`h-full rounded-full transition-all ${
-                        ac.healthScore >= 85 ? 'bg-sb-success' :
-                        ac.healthScore >= 70 ? 'bg-sb-warn' :
-                        ac.healthScore >= 50 ? 'bg-orange-500' : 'bg-sb-danger'
+                        ac.healthScore >= 85 ? 'bg-emerald-500' :
+                        ac.healthScore >= 70 ? 'bg-amber-500' :
+                        ac.healthScore >= 50 ? 'bg-orange-500' : 'bg-red-500'
                       }`}
                       style={{ width: `${ac.healthScore}%` }}
                     />
@@ -222,24 +202,29 @@ export default function FleetOverview({ healthData, flights, onAircraftClick }: 
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="bg-sb-dark/50 rounded p-2">
+                  <div className="bg-slate-700/30 rounded p-2">
                     <span className="text-slate-500">Uçuş</span>
                     <p className="font-semibold text-white">{ac.totalFlights}</p>
                   </div>
-                  <div className="bg-sb-dark/50 rounded p-2">
+                  <div className="bg-slate-700/30 rounded p-2">
                     <span className="text-slate-500">PFD</span>
-                    <p className="font-semibold text-white">{ac.avgPfdTurn1.toFixed(1)}%</p>
+                    <p className="font-semibold text-white">{ac.avgPfd.toFixed(1)}%</p>
                   </div>
-                  <div className="bg-sb-dark/50 rounded p-2">
-                    <span className="text-slate-500">Açılma</span>
-                    <p className="font-semibold text-white">{ac.avgDurationDerivative.toFixed(2)}s</p>
+                  <div className="bg-slate-700/30 rounded p-2">
+                    <span className="text-slate-500">Süre Oranı</span>
+                    <p className="font-semibold text-white">{ac.durationRatioAvg.toFixed(2)}x</p>
                   </div>
-                  <div className="bg-sb-dark/50 rounded p-2">
+                  <div className="bg-slate-700/30 rounded p-2">
                     <span className="text-slate-500">Anomali</span>
-                    <p className={`font-semibold ${ac.anomalies.length > 0 ? 'text-sb-warn' : 'text-sb-success'}`}>
-                      {ac.anomalies.length}
+                    <p className={`font-semibold ${(ac.criticalCount + ac.warningCount) > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                      {ac.criticalCount + ac.warningCount}
                     </p>
                   </div>
+                </div>
+
+                {/* Trend */}
+                <div className="mt-2 text-[10px] text-slate-500 text-center">
+                  {trendLabel[ac.trend] || 'Stabil'} · Son: {ac.lastFlightDate}
                 </div>
               </button>
             ))}

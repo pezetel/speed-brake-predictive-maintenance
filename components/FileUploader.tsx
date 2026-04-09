@@ -3,7 +3,7 @@
 import { useCallback, useState } from 'react';
 import { Upload, FileSpreadsheet, Loader2, CheckCircle } from 'lucide-react';
 import { FlightRecord } from '@/lib/types';
-import { parseExcelWithProgress, ParseProgress } from '@/lib/worker-parse';
+import { parseExcelInWorker, ParseProgress } from '@/lib/worker-bridge';
 
 interface Props {
   onDataLoaded: (data: FlightRecord[]) => void;
@@ -23,7 +23,9 @@ export default function FileUploader({ onDataLoaded }: Props) {
     setFileName(file.name);
 
     try {
-      const records = await parseExcelWithProgress(file, setProgress);
+      // Use the Web Worker bridge — parsing happens off the main thread
+      // Falls back to main-thread parsing if Workers aren't available
+      const records = await parseExcelInWorker(file, setProgress);
 
       if (records.length === 0) {
         setError('Geçerli uçuş kaydı bulunamadı. Kolon sıralamasını kontrol edin.');
@@ -123,7 +125,7 @@ export default function FileUploader({ onDataLoaded }: Props) {
               <p className="text-slate-300 font-medium">
                 {isDragging ? 'Dosyayı bırakın' : 'Excel dosyanızı sürükleyin veya tıklayın'}
               </p>
-              <p className="text-slate-500 text-sm mt-1">.xlsx, .xls, .csv — 10.000+ satır desteklenir</p>
+              <p className="text-slate-500 text-sm mt-1">.xlsx, .xls, .csv — 50.000+ satır desteklenir (Web Worker ile)</p>
             </div>
           </div>
         )}
