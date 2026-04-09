@@ -2,8 +2,8 @@
 
 import React, { useState, useMemo, useCallback, lazy, Suspense, useTransition } from 'react';
 import { FlightRecord, FilterState } from '@/lib/types';
-import { applyFilters, computeSummary } from '@/lib/utils';
-import { computeTailHealthScores, generatePredictiveInsights } from '@/lib/analytics';
+import { useFilteredData } from '@/lib/use-filtered-data';
+import { getCachedSummary, getCachedHealthScores, getCachedInsights, clearAllCaches } from '@/lib/analytics-cache';
 import { debounce } from '@/lib/performance';
 import KPICards from './KPICards';
 import Filters from './Filters';
@@ -60,24 +60,31 @@ export default function Dashboard({ data, onReset }: Props) {
     [debouncedSetFilters],
   );
 
-  // Heavy computations memoized
-  const filteredData = useMemo(() => applyFilters(data, filters), [data, filters]);
-  const summary = useMemo(() => computeSummary(filteredData), [filteredData]);
+  // ---- INDEX-BASED FILTERING (no [...data] copies) ----
+  const { filteredData, index } = useFilteredData(data, filters);
 
-  // Only compute these when needed tabs are active
+  // ---- CACHED ANALYTICS (referential-equality cache, no recompute if same data ref) ----
+  const summary = useMemo(() => getCachedSummary(filteredData), [filteredData]);
+
+  // Only compute health scores when needed tabs are active
   const healthScores = useMemo(() => {
     if (['overview', 'predictive', 'health'].includes(activeTab)) {
-      return computeTailHealthScores(filteredData);
+      return getCachedHealthScores(filteredData);
     }
     return [];
   }, [filteredData, activeTab]);
 
   const insights = useMemo(() => {
     if (['overview', 'predictive'].includes(activeTab) && healthScores.length > 0) {
-      return generatePredictiveInsights(filteredData, healthScores);
+      return getCachedInsights(filteredData, healthScores);
     }
     return [];
   }, [filteredData, healthScores, activeTab]);
+
+  const handleReset = useCallback(() => {
+    clearAllCaches();
+    onReset();
+  }, [onReset]);
 
   const tabs: { key: TabKey; label: string; icon: React.ReactNode; badge?: number }[] = [
     { key: 'overview', label: 'Genel Bakış', icon: <BarChart3 className="w-4 h-4" /> },
@@ -114,7 +121,7 @@ export default function Dashboard({ data, onReset }: Props) {
             </div>
           </div>
           <button
-            onClick={onReset}
+            onClick={handleReset}
             className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm text-slate-300 transition-colors"
           >
             <RotateCcw className="w-4 h-4" />
@@ -148,9 +155,9 @@ export default function Dashboard({ data, onReset }: Props) {
         </div>
       </header>
 
-      {/* Filters */}
+      {/* Filters — pass index for zero-scan dropdown population */}
       <div className="max-w-[1800px] mx-auto px-4 pt-4">
-        <Filters data={data} filters={filters} onFilterChange={handleFilterChange} />
+        <Filters index={index} filters={filters} onFilterChange={handleFilterChange} />
       </div>
 
       {/* Content — only render active tab */}

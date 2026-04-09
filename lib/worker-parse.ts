@@ -1,6 +1,7 @@
 // ============================================================
-// Excel parse helper — optimized for 50k+ rows
-// Processes in larger chunks with progress reporting
+// Excel parse helper — main-thread FALLBACK
+// Only used when Web Worker is unavailable.
+// The primary path is through worker-bridge.ts → parse-worker.js
 // ============================================================
 import * as XLSX from 'xlsx';
 import { FlightRecord } from './types';
@@ -13,9 +14,8 @@ export interface ParseProgress {
 }
 
 /**
- * Parse an Excel file with progress callbacks.
- * Splits work into phases so the UI can show progress.
- * Uses larger chunk sizes for better throughput on big files.
+ * Parse an Excel file on the main thread with progress callbacks.
+ * Splits work into phases with yields so the UI can show progress.
  */
 export async function parseExcelWithProgress(
   file: File,
@@ -32,7 +32,6 @@ export async function parseExcelWithProgress(
   const workbook = XLSX.read(buffer, {
     type: 'array',
     cellDates: true,
-    // Performance: skip styles/formulas
     cellStyles: false,
     cellFormula: false,
     cellHTML: false,
@@ -55,7 +54,6 @@ export async function parseExcelWithProgress(
   }
 
   // Phase 3: Analyze & create FlightRecords in chunks
-  // Larger chunks for big datasets
   onProgress({ phase: 'analyzing', percent: 50 });
   await yieldToMain();
 

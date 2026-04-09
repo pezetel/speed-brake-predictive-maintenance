@@ -1,28 +1,25 @@
 'use client';
 
 import { useMemo } from 'react';
-import { FlightRecord, FilterState } from '@/lib/types';
+import { FilterState } from '@/lib/types';
+import { DataIndex } from '@/lib/performance';
+import { useFilterOptions } from '@/lib/use-filtered-data';
 import { Filter, X } from 'lucide-react';
 
 interface Props {
-  data: FlightRecord[];
+  index: DataIndex;
   filters: FilterState;
   onFilterChange: (filters: FilterState) => void;
 }
 
-export default function Filters({ data, filters, onFilterChange }: Props) {
-  const allTails = useMemo(() => Array.from(new Set(data.map(d => d.tailNumber))).sort(), [data]);
-
-  const allAirports = useMemo(() => {
-    const set = new Set<string>();
-    data.forEach(d => {
-      if (d.takeoffAirport && d.takeoffAirport !== 'UNKNOWN') set.add(d.takeoffAirport);
-      if (d.landingAirport && d.landingAirport !== 'UNKNOWN') set.add(d.landingAirport);
-    });
-    return Array.from(set).sort();
-  }, [data]);
-
-  const dates = useMemo(() => Array.from(new Set(data.map(d => d.flightDate))).sort(), [data]);
+/**
+ * Optimized Filters component.
+ * Instead of scanning all 50K+ records to find unique tails/airports/dates,
+ * reads directly from the pre-built DataIndex (O(1) lookups).
+ */
+export default function Filters({ index, filters, onFilterChange }: Props) {
+  // All options come from the pre-built index — zero scanning
+  const { allTails, allAirports, allDates } = useFilterOptions(index);
 
   const hasFilters = filters.aircraftType !== 'ALL' || filters.anomalyLevel !== 'ALL' || filters.tails.length > 0 || filters.airport !== '' || filters.dateRange !== null;
 
@@ -52,14 +49,14 @@ export default function Filters({ data, filters, onFilterChange }: Props) {
         </select>
 
         <div className="flex items-center gap-1">
-          <select value={filters.dateRange?.[0] || ''} onChange={e => { const s = e.target.value; if (!s) onFilterChange({ ...filters, dateRange: null }); else onFilterChange({ ...filters, dateRange: [s, filters.dateRange?.[1] || dates[dates.length - 1]] }); }} className="bg-slate-700 text-slate-200 text-xs rounded-lg px-2 py-1.5 border border-slate-600">
+          <select value={filters.dateRange?.[0] || ''} onChange={e => { const s = e.target.value; if (!s) onFilterChange({ ...filters, dateRange: null }); else onFilterChange({ ...filters, dateRange: [s, filters.dateRange?.[1] || allDates[allDates.length - 1]] }); }} className="bg-slate-700 text-slate-200 text-xs rounded-lg px-2 py-1.5 border border-slate-600">
             <option value="">Başlangıç</option>
-            {dates.map(d => <option key={d} value={d}>{d}</option>)}
+            {allDates.map(d => <option key={d} value={d}>{d}</option>)}
           </select>
           <span className="text-slate-500 text-xs">–</span>
-          <select value={filters.dateRange?.[1] || ''} onChange={e => { const end = e.target.value; if (!end) onFilterChange({ ...filters, dateRange: null }); else onFilterChange({ ...filters, dateRange: [filters.dateRange?.[0] || dates[0], end] }); }} className="bg-slate-700 text-slate-200 text-xs rounded-lg px-2 py-1.5 border border-slate-600">
+          <select value={filters.dateRange?.[1] || ''} onChange={e => { const end = e.target.value; if (!end) onFilterChange({ ...filters, dateRange: null }); else onFilterChange({ ...filters, dateRange: [filters.dateRange?.[0] || allDates[0], end] }); }} className="bg-slate-700 text-slate-200 text-xs rounded-lg px-2 py-1.5 border border-slate-600">
             <option value="">Bitiş</option>
-            {dates.map(d => <option key={d} value={d}>{d}</option>)}
+            {allDates.map(d => <option key={d} value={d}>{d}</option>)}
           </select>
         </div>
 
