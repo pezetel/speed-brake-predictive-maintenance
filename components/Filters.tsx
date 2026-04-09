@@ -6,17 +6,20 @@ import { Filter, X } from 'lucide-react';
 
 interface Props {
   index: {
-    tails: string[];
-    airports: string[];
-    dateRange: [string, string] | null;
+    tails?: string[];
+    airports?: string[];
+    dateRange?: [string, string] | null;
+    allTails?: string[];
+    allAirports?: string[];
   };
   filters: FilterState;
   onFilterChange: (f: FilterState) => void;
 }
 
 export default function Filters({ index, filters, onFilterChange }: Props) {
-  const tails = useMemo(() => index.tails.sort(), [index.tails]);
-  const airports = useMemo(() => index.airports.sort(), [index.airports]);
+  const tails = useMemo(() => (index.tails || index.allTails || []).slice().sort(), [index.tails, index.allTails]);
+  const airports = useMemo(() => (index.airports || index.allAirports || []).slice().sort(), [index.airports, index.allAirports]);
+  const dateRange = index.dateRange || null;
 
   const hasFilters = filters.anomalyLevel !== 'ALL' || filters.tails.length > 0 || filters.airport !== '' || filters.dateRange !== null;
 
@@ -40,11 +43,11 @@ export default function Filters({ index, filters, onFilterChange }: Props) {
         {airports.map(a => <option key={a} value={a}>{a}</option>)}
       </select>
 
-      {index.dateRange && (
+      {dateRange && (
         <>
-          <input type="date" value={filters.dateRange?.[0] || index.dateRange[0]} onChange={e => onFilterChange({ ...filters, dateRange: [e.target.value, filters.dateRange?.[1] || index.dateRange![1]] })} className="bg-slate-700 text-slate-200 text-xs rounded-lg px-2 py-1.5 border border-slate-600" />
+          <input type="date" value={filters.dateRange?.[0] || dateRange[0]} onChange={e => onFilterChange({ ...filters, dateRange: [e.target.value, filters.dateRange?.[1] || dateRange[1]] })} className="bg-slate-700 text-slate-200 text-xs rounded-lg px-2 py-1.5 border border-slate-600" />
           <span className="text-slate-500 text-xs">→</span>
-          <input type="date" value={filters.dateRange?.[1] || index.dateRange[1]} onChange={e => onFilterChange({ ...filters, dateRange: [filters.dateRange?.[0] || index.dateRange![0], e.target.value] })} className="bg-slate-700 text-slate-200 text-xs rounded-lg px-2 py-1.5 border border-slate-600" />
+          <input type="date" value={filters.dateRange?.[1] || dateRange[1]} onChange={e => onFilterChange({ ...filters, dateRange: [filters.dateRange?.[0] || dateRange[0], e.target.value] })} className="bg-slate-700 text-slate-200 text-xs rounded-lg px-2 py-1.5 border border-slate-600" />
         </>
       )}
 
