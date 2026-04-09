@@ -1,7 +1,6 @@
 // ============================================================
-// Excel parse helper — runs heavy work off the main thread
-// when Web Workers are available, otherwise falls back to
-// chunked processing on the main thread.
+// Excel parse helper — optimized for 50k+ rows
+// Processes in larger chunks with progress reporting
 // ============================================================
 import * as XLSX from 'xlsx';
 import { FlightRecord } from './types';
@@ -16,6 +15,7 @@ export interface ParseProgress {
 /**
  * Parse an Excel file with progress callbacks.
  * Splits work into phases so the UI can show progress.
+ * Uses larger chunk sizes for better throughput on big files.
  */
 export async function parseExcelWithProgress(
   file: File,
@@ -25,17 +25,21 @@ export async function parseExcelWithProgress(
   onProgress({ phase: 'reading', percent: 10 });
   const buffer = await file.arrayBuffer();
 
-  // Phase 2: Parse workbook — this is CPU-heavy
-  onProgress({ phase: 'parsing', percent: 30 });
-
-  // Yield to browser before heavy work
+  // Phase 2: Parse workbook
+  onProgress({ phase: 'parsing', percent: 25 });
   await yieldToMain();
 
-  const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
+  const workbook = XLSX.read(buffer, {
+    type: 'array',
+    cellDates: true,
+    // Performance: skip styles/formulas
+    cellStyles: false,
+    cellFormula: false,
+    cellHTML: false,
+  });
 
-  // Collect rows from ALL sheets (each sheet may be a different tail)
+  // Collect rows from ALL sheets
   let allRows: any[] = [];
-
   for (const sheetName of workbook.SheetNames) {
     const sheet = workbook.Sheets[sheetName];
     const json = XLSX.utils.sheet_to_json(sheet, { defval: '' });
@@ -44,18 +48,18 @@ export async function parseExcelWithProgress(
     }
   }
 
-  onProgress({ phase: 'parsing', percent: 50, recordCount: allRows.length });
+  onProgress({ phase: 'parsing', percent: 45, recordCount: allRows.length });
 
   if (allRows.length === 0) {
     throw new Error('Excel dosyası boş veya okunamadı.');
   }
 
   // Phase 3: Analyze & create FlightRecords in chunks
-  onProgress({ phase: 'analyzing', percent: 60 });
+  // Larger chunks for big datasets
+  onProgress({ phase: 'analyzing', percent: 50 });
   await yieldToMain();
 
-  // Process in chunks to avoid blocking
-  const chunkSize = 3000;
+  const chunkSize = Math.max(5000, Math.min(15000, Math.floor(allRows.length / 8)));
   const records: FlightRecord[] = [];
 
   for (let i = 0; i < allRows.length; i += chunkSize) {
@@ -63,14 +67,13 @@ export async function parseExcelWithProgress(
     const parsed = parseExcelData(chunk);
     records.push(...parsed);
 
-    const pct = 60 + Math.round(((i + chunkSize) / allRows.length) * 35);
+    const pct = 50 + Math.round(((i + chunkSize) / allRows.length) * 45);
     onProgress({
       phase: 'analyzing',
-      percent: Math.min(pct, 95),
+      percent: Math.min(pct, 97),
       recordCount: records.length,
     });
 
-    // Yield every chunk
     if (i + chunkSize < allRows.length) {
       await yieldToMain();
     }

@@ -1,5 +1,6 @@
 // ============================================================
 // B737 Speedbrake Predictive Maintenance — Utility helpers
+// Optimized for 50k+ records
 // ============================================================
 import {
   FlightRecord,
@@ -14,11 +15,9 @@ function parseNumberSmart(val: any): number {
   if (val === null || val === undefined || val === '') return 0;
   if (typeof val === 'number') return val;
   const s = String(val).trim();
-  // Pure comma-decimal (no dot)
   if (s.includes(',') && !s.includes('.')) {
     return parseFloat(s.replace(',', '.')) || 0;
   }
-  // Both comma and dot → figure out which is decimal
   if (s.includes(',') && s.includes('.')) {
     const lastComma = s.lastIndexOf(',');
     const lastDot = s.lastIndexOf('.');
@@ -37,9 +36,6 @@ export function detectAircraftType(tail: string): 'NG' | 'MAX' {
   if (!tail) return 'NG';
   const t = tail.toUpperCase();
   if (t.startsWith('TC-SM')) return 'MAX';
-  // TC-SP* is 737 NG (SunExpress 737-800 fleet)
-  // TC-SE* is 737 NG (older)
-  // TC-SN* is 737 NG
   return 'NG';
 }
 
@@ -53,31 +49,28 @@ export function detectAnomaly(
   let level: 'normal' | 'warning' | 'critical' = 'normal';
   const nPfd = record.normalizedPfd;
 
-  // 1. PFD thresholds
   if (nPfd > 0 && nPfd < 70) {
     level = 'critical';
-    reasons.push(`PFD çok düşük: ${record.pfdTurn1.toFixed(1)}% → Speedbrake tam açılamıyor`);
+    reasons.push(`PFD çok düşük: ${record.pfdTurn1.toFixed(1)}%`);
   } else if (nPfd >= 70 && nPfd < 80) {
     level = 'critical';
-    reasons.push(`PFD düşük: ${record.pfdTurn1.toFixed(1)}% → Mekanik arıza şüphesi`);
+    reasons.push(`PFD düşük: ${record.pfdTurn1.toFixed(1)}%`);
   } else if (nPfd >= 80 && nPfd < 95) {
     if (level !== 'critical') level = 'warning';
     reasons.push(`PFD normalin altında: ${record.pfdTurn1.toFixed(1)}%`);
   }
 
-  // 2. Duration ratio (extTo99 / derivative)
   if (record.durationDerivative > 0 && record.durationExtTo99 > 0) {
     const ratio = record.durationRatio;
     if (ratio > 4) {
       level = 'critical';
-      reasons.push(`Yavaş açılma: %99'a ulaşım ${ratio.toFixed(1)}x daha uzun → Hidrolik/mekanik direnç`);
+      reasons.push(`Yavaş açılma: %99'a ulaşım ${ratio.toFixed(1)}x daha uzun`);
     } else if (ratio > 2.5) {
       if (level !== 'critical') level = 'warning';
       reasons.push(`Gecikmeli açılma: Oran ${ratio.toFixed(1)}x`);
     }
   }
 
-  // 3. Absolute extension-to-99 duration
   if (record.durationExtTo99 > 10) {
     level = 'critical';
     reasons.push(`%99 uzama süresi aşırı yüksek: ${record.durationExtTo99.toFixed(1)}s`);
@@ -86,50 +79,40 @@ export function detectAnomaly(
     reasons.push(`%99 uzama süresi yüksek: ${record.durationExtTo99.toFixed(1)}s`);
   }
 
-  // 4. Landing distance: 50kn > 30kn (physically anomalous)
   if (record.landingDist30kn > 0 && record.landingDist50kn > 0) {
     if (record.landingDist50kn > record.landingDist30kn * 1.05) {
       level = 'critical';
-      reasons.push(
-        `İniş mesafesi anomalisi: 50kn(${record.landingDist50kn.toFixed(0)}m) > 30kn(${record.landingDist30kn.toFixed(0)}m) 🔴`,
-      );
+      reasons.push(`İniş mesafesi anomalisi: 50kn(${record.landingDist50kn.toFixed(0)}m) > 30kn(${record.landingDist30kn.toFixed(0)}m)`);
     }
   }
 
-  // 5. Excessive landing distance
   if (record.landingDist30kn > 2200) {
     if (level !== 'critical') level = 'warning';
     reasons.push(`İniş mesafesi uzun: ${record.landingDist30kn.toFixed(0)}m (30kn)`);
   }
 
-  // 6. DEG vs PFD correlation
   if (record.pfdTurn1Deg > 0 && record.pfeTo99Deg > 0) {
     if (record.pfdTurn1Deg < 25 && nPfd < 90) {
       level = 'critical';
-      reasons.push(`Açı çok düşük: ${record.pfdTurn1Deg.toFixed(1)}° → Speedbrake fiziksel olarak açılamıyor`);
+      reasons.push(`Açı çok düşük: ${record.pfdTurn1Deg.toFixed(1)}°`);
     } else if (record.pfdTurn1Deg < 35 && nPfd < 90) {
       if (level !== 'critical') level = 'warning';
-      reasons.push(`Açı düşük: ${record.pfdTurn1Deg.toFixed(1)}° (PFD: ${nPfd.toFixed(1)})`);
+      reasons.push(`Açı düşük: ${record.pfdTurn1Deg.toFixed(1)}°`);
     }
-    // Slow opening: initial DEG << final DEG
     const degDiff = record.pfeTo99Deg - record.pfdTurn1Deg;
     if (degDiff > 8 && nPfd < 90) {
       if (level !== 'critical') level = 'warning';
-      reasons.push(
-        `Gecikmeli açılma: Başlangıç ${record.pfdTurn1Deg.toFixed(1)}° → Son ${record.pfeTo99Deg.toFixed(1)}° (Δ${degDiff.toFixed(1)}°)`,
-      );
+      reasons.push(`Gecikmeli açılma: ${record.pfdTurn1Deg.toFixed(1)}° → ${record.pfeTo99Deg.toFixed(1)}°`);
     }
   }
 
-  // 7. Doubled record flag
   if (record.isDoubledRecord) {
     reasons.push(`Çift kayıt tespit edildi (PFD: ${record.pfdTurn1.toFixed(1)})`);
   }
 
-  // 8. GS at SBOP extremely low (possible early activation or data error)
   if (record.gsAtAutoSbop > 0 && record.gsAtAutoSbop < 2500) {
     if (level !== 'critical') level = 'warning';
-    reasons.push(`GS at SBOP çok düşük: ${record.gsAtAutoSbop.toFixed(0)} → Erken açılma veya veri hatası`);
+    reasons.push(`GS at SBOP çok düşük: ${record.gsAtAutoSbop.toFixed(0)}`);
   }
 
   return { level, reasons };
@@ -137,15 +120,14 @@ export function detectAnomaly(
 
 // ----------------------------------------------------------------
 // Parse Excel rows → FlightRecord[]
+// Optimized: batch column detection, pre-allocated array
 // ----------------------------------------------------------------
 export function parseExcelData(rows: any[]): FlightRecord[] {
-  const records: FlightRecord[] = [];
+  if (rows.length === 0) return [];
 
-  // Try to detect column mapping from header row
   const firstRow = rows[0];
   const keys = firstRow ? Object.keys(firstRow) : [];
 
-  // Build column index mapping (flexible header detection)
   function findColIndex(patterns: string[]): string | null {
     for (const key of keys) {
       const upper = key.toUpperCase();
@@ -169,7 +151,11 @@ export function parseExcelData(rows: any[]): FlightRecord[] {
   const colLand50 = findColIndex(['50_KNOT', 'FOR_50_KNOT', '50KN']);
   const colGs = findColIndex(['GS_AT_AUTO', 'SBOP_SEC', 'GS_AT_AUTO_SBOP']);
 
-  for (const row of rows) {
+  // Pre-allocate results (estimate ~90% valid)
+  const records: FlightRecord[] = [];
+
+  for (let ri = 0; ri < rows.length; ri++) {
+    const row = rows[ri];
     let tailNumber: string;
     let dateVal: any;
     let takeoffAirport: string;
@@ -184,7 +170,6 @@ export function parseExcelData(rows: any[]): FlightRecord[] {
     let gsAtAutoSbop: number;
 
     if (colTail) {
-      // Named columns detected
       dateVal = row[colDate || ''];
       tailNumber = String(row[colTail] || '').trim().toUpperCase();
       takeoffAirport = String(row[colTakeoff || ''] || '').trim().toUpperCase();
@@ -198,7 +183,6 @@ export function parseExcelData(rows: any[]): FlightRecord[] {
       landingDist50kn = parseNumberSmart(row[colLand50 || '']);
       gsAtAutoSbop = parseNumberSmart(row[colGs || '']);
     } else {
-      // Fallback: positional columns
       const vals = Object.values(row);
       if (vals.length < 12) continue;
       dateVal = vals[0];
@@ -217,12 +201,10 @@ export function parseExcelData(rows: any[]): FlightRecord[] {
 
     if (!tailNumber || !tailNumber.startsWith('TC-')) continue;
 
-    // ---- date handling ----
     let flightDate = '';
     if (dateVal instanceof Date) {
       flightDate = dateVal.toISOString().split('T')[0];
     } else if (typeof dateVal === 'number') {
-      // Excel serial date
       const d = new Date((dateVal - 25569) * 86400 * 1000);
       flightDate = d.toISOString().split('T')[0];
     } else {
@@ -295,88 +277,121 @@ export function parseExcelData(rows: any[]): FlightRecord[] {
 }
 
 // ----------------------------------------------------------------
-// Aggregate summary
+// Aggregate summary — single pass O(n)
 // ----------------------------------------------------------------
 export function computeSummary(data: FlightRecord[]): AnomalySummary {
-  const tails = new Set(data.map((d) => d.tailNumber));
-  const ngTails = new Set(data.filter((d) => d.aircraftType === 'NG').map((d) => d.tailNumber));
-  const maxTails = new Set(data.filter((d) => d.aircraftType === 'MAX').map((d) => d.tailNumber));
-  const criticals = data.filter((d) => d.anomalyLevel === 'critical');
-  const warnings = data.filter((d) => d.anomalyLevel === 'warning');
-  const normals = data.filter((d) => d.anomalyLevel === 'normal');
+  const n = data.length;
+  if (n === 0) {
+    return {
+      totalFlights: 0, criticalCount: 0, warningCount: 0, normalCount: 0,
+      uniqueTails: 0, uniqueNGTails: 0, uniqueMAXTails: 0, avgPFD: 0,
+      problematicTails: [], avgDeg: 0, avgDuration: 0, avgLandingDist: 0,
+      doubledRecords: 0, landingDistAnomalyCount: 0, avgDurationRatio: 0,
+      slowOpeningCount: 0, mechanicalFailureCount: 0,
+    };
+  }
 
+  const tailSet = new Set<string>();
+  const ngTailSet = new Set<string>();
+  const maxTailSet = new Set<string>();
   const problematicTailSet = new Set<string>();
-  criticals.forEach((d) => problematicTailSet.add(d.tailNumber));
 
-  const safe = (arr: FlightRecord[], fn: (d: FlightRecord) => number, lo = 0, hi = 999999) => {
-    const filtered = arr.filter((d) => fn(d) > lo && fn(d) < hi);
-    return filtered.length > 0 ? filtered.reduce((s, d) => s + fn(d), 0) / filtered.length : 0;
-  };
+  let criticalCount = 0;
+  let warningCount = 0;
+  let normalCount = 0;
+  let pfdSum = 0;
+  let pfdCount = 0;
+  let degSum = 0;
+  let degCount = 0;
+  let durSum = 0;
+  let durCount = 0;
+  let ldSum = 0;
+  let ldCount = 0;
+  let drSum = 0;
+  let drCount = 0;
+  let doubledRecords = 0;
+  let landingDistAnomalyCount = 0;
+  let slowOpeningCount = 0;
+  let mechanicalFailureCount = 0;
 
-  const avgPFD = safe(data, (d) => d.normalizedPfd, 0, 105);
-  const avgDeg = safe(data, (d) => d.pfdTurn1Deg, 0, 100);
-  const avgDuration = safe(data, (d) => d.durationDerivative, 0, 50);
-  const avgLandingDist = safe(data, (d) => d.landingDist30kn, 0, 5000);
-  const avgDurationRatio = safe(data, (d) => d.durationRatio, 0, 50);
+  for (let i = 0; i < n; i++) {
+    const d = data[i];
+    tailSet.add(d.tailNumber);
+    if (d.aircraftType === 'NG') ngTailSet.add(d.tailNumber);
+    else maxTailSet.add(d.tailNumber);
+
+    if (d.anomalyLevel === 'critical') { criticalCount++; problematicTailSet.add(d.tailNumber); }
+    else if (d.anomalyLevel === 'warning') warningCount++;
+    else normalCount++;
+
+    if (d.normalizedPfd > 0 && d.normalizedPfd < 105) { pfdSum += d.normalizedPfd; pfdCount++; }
+    if (d.pfdTurn1Deg > 0 && d.pfdTurn1Deg < 100) { degSum += d.pfdTurn1Deg; degCount++; }
+    if (d.durationDerivative > 0 && d.durationDerivative < 50) { durSum += d.durationDerivative; durCount++; }
+    if (d.landingDist30kn > 0 && d.landingDist30kn < 5000) { ldSum += d.landingDist30kn; ldCount++; }
+    if (d.durationRatio > 0 && d.durationRatio < 50) { drSum += d.durationRatio; drCount++; }
+    if (d.isDoubledRecord) doubledRecords++;
+    if (d.landingDistAnomaly) landingDistAnomalyCount++;
+    if (d.normalizedPfd < 90 && d.pfeTo99Deg - d.pfdTurn1Deg > 5) slowOpeningCount++;
+    if (d.normalizedPfd < 70 && d.pfdTurn1Deg < 25) mechanicalFailureCount++;
+  }
 
   return {
-    totalFlights: data.length,
-    criticalCount: criticals.length,
-    warningCount: warnings.length,
-    normalCount: normals.length,
-    uniqueTails: tails.size,
-    uniqueNGTails: ngTails.size,
-    uniqueMAXTails: maxTails.size,
-    avgPFD,
+    totalFlights: n,
+    criticalCount,
+    warningCount,
+    normalCount,
+    uniqueTails: tailSet.size,
+    uniqueNGTails: ngTailSet.size,
+    uniqueMAXTails: maxTailSet.size,
+    avgPFD: pfdCount > 0 ? pfdSum / pfdCount : 0,
     problematicTails: Array.from(problematicTailSet),
-    avgDeg,
-    avgDuration,
-    avgLandingDist,
-    doubledRecords: data.filter((d) => d.isDoubledRecord).length,
-    landingDistAnomalyCount: data.filter((d) => d.landingDistAnomaly).length,
-    avgDurationRatio,
-    slowOpeningCount: data.filter((d) => d.normalizedPfd < 90 && d.pfeTo99Deg - d.pfdTurn1Deg > 5).length,
-    mechanicalFailureCount: data.filter((d) => d.normalizedPfd < 70 && d.pfdTurn1Deg < 25).length,
+    avgDeg: degCount > 0 ? degSum / degCount : 0,
+    avgDuration: durCount > 0 ? durSum / durCount : 0,
+    avgLandingDist: ldCount > 0 ? ldSum / ldCount : 0,
+    doubledRecords,
+    landingDistAnomalyCount,
+    avgDurationRatio: drCount > 0 ? drSum / drCount : 0,
+    slowOpeningCount,
+    mechanicalFailureCount,
   };
 }
 
 // ----------------------------------------------------------------
-// Filtering
+// Filtering (legacy — non-indexed fallback)
 // ----------------------------------------------------------------
 export function applyFilters(data: FlightRecord[], filters: FilterState): FlightRecord[] {
-  let f = [...data];
+  let f = data;
   if (filters.aircraftType !== 'ALL') f = f.filter((d) => d.aircraftType === filters.aircraftType);
   if (filters.anomalyLevel !== 'ALL') f = f.filter((d) => d.anomalyLevel === filters.anomalyLevel);
-  if (filters.tails.length > 0) f = f.filter((d) => filters.tails.includes(d.tailNumber));
+  if (filters.tails.length > 0) {
+    const tailSet = new Set(filters.tails);
+    f = f.filter((d) => tailSet.has(d.tailNumber));
+  }
   if (filters.airport) {
     const ap = filters.airport.toUpperCase();
     f = f.filter((d) => d.takeoffAirport === ap || d.landingAirport === ap);
   }
   if (filters.dateRange) {
-    f = f.filter((d) => d.flightDate >= filters.dateRange![0] && d.flightDate <= filters.dateRange![1]);
+    const [start, end] = filters.dateRange;
+    f = f.filter((d) => d.flightDate >= start && d.flightDate <= end);
   }
   return f;
 }
 
 // ----------------------------------------------------------------
-// Pearson correlation
+// Pearson correlation — single pass
 // ----------------------------------------------------------------
 export function computeCorrelation(x: number[], y: number[]): number {
   const n = Math.min(x.length, y.length);
   if (n < 3) return 0;
-  const mx = x.slice(0, n).reduce((a, b) => a + b, 0) / n;
-  const my = y.slice(0, n).reduce((a, b) => a + b, 0) / n;
-  let num = 0,
-    dx = 0,
-    dy = 0;
+  let sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
   for (let i = 0; i < n; i++) {
-    const xi = x[i] - mx;
-    const yi = y[i] - my;
-    num += xi * yi;
-    dx += xi * xi;
-    dy += yi * yi;
+    sx += x[i]; sy += y[i];
+    sxx += x[i] * x[i]; syy += y[i] * y[i];
+    sxy += x[i] * y[i];
   }
-  const den = Math.sqrt(dx * dy);
+  const num = n * sxy - sx * sy;
+  const den = Math.sqrt((n * sxx - sx * sx) * (n * syy - sy * sy));
   return den === 0 ? 0 : num / den;
 }
 

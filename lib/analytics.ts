@@ -1,5 +1,6 @@
 // ============================================================
 // B737 Speedbrake Predictive Maintenance — Analytics engine
+// Optimized: single-pass aggregations, Map-based grouping
 // ============================================================
 import {
   FlightRecord,
@@ -10,44 +11,85 @@ import {
 } from './types';
 
 // ----------------------------------------------------------------
-// Tail‑level health scoring
+// Tail-level health scoring — O(n) single pass grouping
 // ----------------------------------------------------------------
 export function computeTailHealthScores(data: FlightRecord[]): TailHealthScore[] {
-  const tailMap = new Map<string, FlightRecord[]>();
-  data.forEach((d) => {
-    if (!tailMap.has(d.tailNumber)) tailMap.set(d.tailNumber, []);
-    tailMap.get(d.tailNumber)!.push(d);
-  });
+  if (data.length === 0) return [];
+
+  // Single pass to group by tail and accumulate stats
+  const tailAgg = new Map<string, {
+    aircraftType: 'NG' | 'MAX';
+    flights: number;
+    pfdSum: number; pfdCount: number;
+    degSum: number; degCount: number;
+    durDerivSum: number; durDerivCount: number;
+    durExtSum: number; durExtCount: number;
+    l30Sum: number; l30Count: number;
+    l50Sum: number; l50Count: number;
+    criticalCount: number; warningCount: number;
+    drSum: number; drCount: number;
+    ldAnomalyCount: number;
+    firstHalfPfd: number[]; secondHalfPfd: number[];
+    lastDate: string;
+    sortedPfds: number[]; // we'll accumulate for trend
+  }>();
+
+  // First pass — accumulate
+  for (let i = 0; i < data.length; i++) {
+    const d = data[i];
+    let agg = tailAgg.get(d.tailNumber);
+    if (!agg) {
+      agg = {
+        aircraftType: d.aircraftType,
+        flights: 0,
+        pfdSum: 0, pfdCount: 0,
+        degSum: 0, degCount: 0,
+        durDerivSum: 0, durDerivCount: 0,
+        durExtSum: 0, durExtCount: 0,
+        l30Sum: 0, l30Count: 0,
+        l50Sum: 0, l50Count: 0,
+        criticalCount: 0, warningCount: 0,
+        drSum: 0, drCount: 0,
+        ldAnomalyCount: 0,
+        firstHalfPfd: [], secondHalfPfd: [],
+        lastDate: '',
+        sortedPfds: [],
+      };
+      tailAgg.set(d.tailNumber, agg);
+    }
+
+    agg.flights++;
+    if (d.normalizedPfd > 0 && d.normalizedPfd <= 105) { agg.pfdSum += d.normalizedPfd; agg.pfdCount++; agg.sortedPfds.push(d.normalizedPfd); }
+    if (d.pfdTurn1Deg > 0 && d.pfdTurn1Deg < 100) { agg.degSum += d.pfdTurn1Deg; agg.degCount++; }
+    if (d.durationDerivative > 0) { agg.durDerivSum += d.durationDerivative; agg.durDerivCount++; }
+    if (d.durationExtTo99 > 0) { agg.durExtSum += d.durationExtTo99; agg.durExtCount++; }
+    if (d.landingDist30kn > 0) { agg.l30Sum += d.landingDist30kn; agg.l30Count++; }
+    if (d.landingDist50kn > 0) { agg.l50Sum += d.landingDist50kn; agg.l50Count++; }
+    if (d.anomalyLevel === 'critical') agg.criticalCount++;
+    if (d.anomalyLevel === 'warning') agg.warningCount++;
+    if (d.durationRatio > 0 && d.durationRatio < 50) { agg.drSum += d.durationRatio; agg.drCount++; }
+    if (d.landingDistAnomaly) agg.ldAnomalyCount++;
+    if (d.flightDate > agg.lastDate) agg.lastDate = d.flightDate;
+  }
 
   const scores: TailHealthScore[] = [];
 
-  tailMap.forEach((flights, tailNumber) => {
-    const sorted = [...flights].sort((a, b) => a.flightDate.localeCompare(b.flightDate));
-    const aircraftType = flights[0].aircraftType;
-    const totalFlights = flights.length;
-
-    const avg = (fn: (f: FlightRecord) => number, lo = 0, hi = 999999) => {
-      const v = flights.filter((f) => fn(f) > lo && fn(f) < hi);
-      return v.length > 0 ? v.reduce((s, f) => s + fn(f), 0) / v.length : 0;
-    };
-
-    const avgPfd = avg((f) => f.normalizedPfd, 0, 105);
-    const avgDeg = avg((f) => f.pfdTurn1Deg, 0, 100);
-    const avgDurationDeriv = avg((f) => f.durationDerivative, 0);
-    const avgDurationExt = avg((f) => f.durationExtTo99, 0);
-    const avgLanding30 = avg((f) => f.landingDist30kn, 0);
-    const avgLanding50 = avg((f) => f.landingDist50kn, 0);
-    const criticalCount = flights.filter((f) => f.anomalyLevel === 'critical').length;
-    const warningCount = flights.filter((f) => f.anomalyLevel === 'warning').length;
-    const durationRatioAvg = avg((f) => f.durationRatio, 0, 50);
-    const landingDistAnomalyRate = flights.filter((f) => f.landingDistAnomaly).length / Math.max(totalFlights, 1);
+  tailAgg.forEach((agg, tailNumber) => {
+    const avgPfd = agg.pfdCount > 0 ? agg.pfdSum / agg.pfdCount : 0;
+    const avgDeg = agg.degCount > 0 ? agg.degSum / agg.degCount : 0;
+    const avgDurationDeriv = agg.durDerivCount > 0 ? agg.durDerivSum / agg.durDerivCount : 0;
+    const avgDurationExt = agg.durExtCount > 0 ? agg.durExtSum / agg.durExtCount : 0;
+    const avgLanding30 = agg.l30Count > 0 ? agg.l30Sum / agg.l30Count : 0;
+    const avgLanding50 = agg.l50Count > 0 ? agg.l50Sum / agg.l50Count : 0;
+    const durationRatioAvg = agg.drCount > 0 ? agg.drSum / agg.drCount : 0;
+    const landingDistAnomalyRate = agg.ldAnomalyCount / Math.max(agg.flights, 1);
 
     // Health score 0–100
     let hs = 100;
     if (avgPfd < 95) hs -= (95 - avgPfd) * 1.5;
     if (avgPfd < 80) hs -= (80 - avgPfd) * 2;
-    hs -= criticalCount * 5;
-    hs -= warningCount * 2;
+    hs -= agg.criticalCount * 5;
+    hs -= agg.warningCount * 2;
     if (durationRatioAvg > 2) hs -= (durationRatioAvg - 2) * 5;
     hs -= landingDistAnomalyRate * 20;
     if (avgDeg < 40) hs -= (40 - avgDeg) * 0.5;
@@ -58,13 +100,17 @@ export function computeTailHealthScores(data: FlightRecord[]): TailHealthScore[]
     else if (hs < 70) riskLevel = 'HIGH';
     else if (hs < 85) riskLevel = 'MEDIUM';
 
-    // Trend: compare first half vs second half average PFD
-    const mid = Math.floor(sorted.length / 2) || 1;
-    const firstAvg = avg.call(null, (f: FlightRecord) => f.normalizedPfd, 0, 105); // approximate
-    const firstPfd = sorted.slice(0, mid).filter((f) => f.normalizedPfd > 0 && f.normalizedPfd <= 105);
-    const secondPfd = sorted.slice(mid).filter((f) => f.normalizedPfd > 0 && f.normalizedPfd <= 105);
-    const fp = firstPfd.length > 0 ? firstPfd.reduce((s, f) => s + f.normalizedPfd, 0) / firstPfd.length : 0;
-    const sp = secondPfd.length > 0 ? secondPfd.reduce((s, f) => s + f.normalizedPfd, 0) / secondPfd.length : 0;
+    // Trend from PFD values
+    const pfds = agg.sortedPfds;
+    const mid = Math.floor(pfds.length / 2) || 1;
+    let fp = 0, sp = 0;
+    if (pfds.length >= 4) {
+      let fpSum = 0, spSum = 0;
+      for (let k = 0; k < mid; k++) fpSum += pfds[k];
+      for (let k = mid; k < pfds.length; k++) spSum += pfds[k];
+      fp = fpSum / mid;
+      sp = spSum / (pfds.length - mid);
+    }
     const degradationRate = fp - sp;
     let trend: TailHealthScore['trend'] = 'stable';
     if (degradationRate > 3) trend = 'degrading';
@@ -72,22 +118,22 @@ export function computeTailHealthScores(data: FlightRecord[]): TailHealthScore[]
 
     scores.push({
       tailNumber,
-      aircraftType,
-      totalFlights,
+      aircraftType: agg.aircraftType,
+      totalFlights: agg.flights,
       avgPfd,
       avgDeg,
-      avgDurationDeriv,
-      avgDurationExt,
-      avgLanding30,
-      avgLanding50,
-      criticalCount,
-      warningCount,
+      avgDurationDeriv: avgDurationDeriv,
+      avgDurationExt: avgDurationExt,
+      avgLanding30: avgLanding30,
+      avgLanding50: avgLanding50,
+      criticalCount: agg.criticalCount,
+      warningCount: agg.warningCount,
       healthScore: Math.round(hs * 10) / 10,
       riskLevel,
       trend,
       durationRatioAvg,
       landingDistAnomalyRate,
-      lastFlightDate: sorted[sorted.length - 1]?.flightDate || '',
+      lastFlightDate: agg.lastDate,
       degradationRate,
     });
   });
@@ -96,7 +142,8 @@ export function computeTailHealthScores(data: FlightRecord[]): TailHealthScore[]
 }
 
 // ----------------------------------------------------------------
-// Predictive insights generation
+// Predictive insights generation — uses pre-computed health scores
+// No per-flight scanning per tail (avoids O(n*tails))
 // ----------------------------------------------------------------
 export function generatePredictiveInsights(
   data: FlightRecord[],
@@ -105,91 +152,117 @@ export function generatePredictiveInsights(
   const insights: PredictiveInsight[] = [];
   let id = 0;
 
+  // Pre-group flights by tail for evidence lookup (lazy - only access when needed)
+  let tailFlightsMap: Map<string, FlightRecord[]> | null = null;
+  function getTailFlights(tail: string): FlightRecord[] {
+    if (!tailFlightsMap) {
+      tailFlightsMap = new Map();
+      for (let i = 0; i < data.length; i++) {
+        const d = data[i];
+        let arr = tailFlightsMap.get(d.tailNumber);
+        if (!arr) { arr = []; tailFlightsMap.set(d.tailNumber, arr); }
+        arr.push(d);
+      }
+    }
+    return tailFlightsMap.get(tail) || [];
+  }
+
   for (const h of healthScores) {
-    const flights = data.filter((d) => d.tailNumber === h.tailNumber);
+    // Skip healthy tails entirely for performance
+    if (h.healthScore > 90 && h.criticalCount === 0 && h.warningCount < 2) continue;
 
-    // 1. Hydraulic resistance: persistently high duration ratio
-    const hiRatio = flights.filter((f) => f.durationRatio > 3);
-    if (hiRatio.length >= 2) {
-      insights.push({
-        id: `ins-${++id}`,
-        tailNumber: h.tailNumber,
-        category: 'hydraulic',
-        severity: hiRatio.length >= 4 ? 'critical' : 'warning',
-        title: `Hidrolik Direnç Şüphesi — ${h.tailNumber}`,
-        description: `Speedbrake %99'a ulaşma süresi, türev süresinin ${h.durationRatioAvg.toFixed(1)}x katı. Hidrolik sistemde artan direnç veya basınç düşüşü.`,
-        evidence: hiRatio.slice(0, 5).map(
-          (f) =>
-            `${f.flightDate} ${f.takeoffAirport}→${f.landingAirport}: Ratio ${f.durationRatio.toFixed(1)}x (${f.durationExtTo99.toFixed(1)}s / ${f.durationDerivative.toFixed(1)}s)`,
-        ),
-        recommendation:
-          'Hidrolik aktuatör basıncını kontrol edin. Hidrolik sıvı seviyesi ve kalitesini test edin. PCU (Power Control Unit) muayenesi önerilir.',
-        relatedFlights: hiRatio.length,
-        confidence: Math.min(95, 60 + hiRatio.length * 8),
-      });
+    const flights = getTailFlights(h.tailNumber);
+
+    // 1. Hydraulic resistance
+    if (h.durationRatioAvg > 2.5) {
+      const hiRatio = flights.filter((f) => f.durationRatio > 3);
+      if (hiRatio.length >= 2) {
+        insights.push({
+          id: `ins-${++id}`,
+          tailNumber: h.tailNumber,
+          category: 'hydraulic',
+          severity: hiRatio.length >= 4 ? 'critical' : 'warning',
+          title: `Hidrolik Direnç Şüphesi — ${h.tailNumber}`,
+          description: `Speedbrake %99'a ulaşma süresi, türev süresinin ${h.durationRatioAvg.toFixed(1)}x katı. Hidrolik sistemde artan direnç veya basınç düşüşü.`,
+          evidence: hiRatio.slice(0, 5).map(
+            (f) =>
+              `${f.flightDate} ${f.takeoffAirport}→${f.landingAirport}: Ratio ${f.durationRatio.toFixed(1)}x`,
+          ),
+          recommendation:
+            'Hidrolik aktuatör basıncını kontrol edin. Hidrolik sıvı seviyesi ve kalitesini test edin. PCU muayenesi önerilir.',
+          relatedFlights: hiRatio.length,
+          confidence: Math.min(95, 60 + hiRatio.length * 8),
+        });
+      }
     }
 
-    // 2. Mechanical failure: very low PFD + low DEG
-    const mechFail = flights.filter((f) => f.normalizedPfd < 75 && f.pfdTurn1Deg < 30);
-    if (mechFail.length >= 1) {
-      insights.push({
-        id: `ins-${++id}`,
-        tailNumber: h.tailNumber,
-        category: 'mechanical',
-        severity: mechFail.length >= 2 ? 'critical' : 'warning',
-        title: `Mekanik Arıza Tespiti — ${h.tailNumber}`,
-        description: `Speedbrake fiziksel olarak tam açılamıyor. PFD ${mechFail[0].normalizedPfd.toFixed(1)}%, açı sadece ${mechFail[0].pfdTurn1Deg.toFixed(1)}°.`,
-        evidence: mechFail.slice(0, 5).map(
-          (f) =>
-            `${f.flightDate} ${f.takeoffAirport}→${f.landingAirport}: PFD=${f.pfdTurn1.toFixed(1)}, DEG=${f.pfdTurn1Deg.toFixed(1)}°`,
-        ),
-        recommendation:
-          `Speedbrake mekanik bağlantılarını, rulmanları ve actuator linkage'ı kontrol edin. Fiziksel engel/hasar muayenesi yapın.`,
-        relatedFlights: mechFail.length,
-        confidence: Math.min(95, 70 + mechFail.length * 10),
-      });
+    // 2. Mechanical failure
+    if (h.avgPfd < 80 || h.criticalCount > 0) {
+      const mechFail = flights.filter((f) => f.normalizedPfd < 75 && f.pfdTurn1Deg < 30);
+      if (mechFail.length >= 1) {
+        insights.push({
+          id: `ins-${++id}`,
+          tailNumber: h.tailNumber,
+          category: 'mechanical',
+          severity: mechFail.length >= 2 ? 'critical' : 'warning',
+          title: `Mekanik Arıza Tespiti — ${h.tailNumber}`,
+          description: `Speedbrake fiziksel olarak tam açılamıyor. PFD ${mechFail[0].normalizedPfd.toFixed(1)}%, açı sadece ${mechFail[0].pfdTurn1Deg.toFixed(1)}°.`,
+          evidence: mechFail.slice(0, 5).map(
+            (f) =>
+              `${f.flightDate} ${f.takeoffAirport}→${f.landingAirport}: PFD=${f.pfdTurn1.toFixed(1)}, DEG=${f.pfdTurn1Deg.toFixed(1)}°`,
+          ),
+          recommendation:
+            'Speedbrake mekanik bağlantılarını, rulmanları ve actuator linkage\'ı kontrol edin.',
+          relatedFlights: mechFail.length,
+          confidence: Math.min(95, 70 + mechFail.length * 10),
+        });
+      }
     }
 
-    // 3. Slow/delayed opening: PFD_DEG << PFE_TO_99_DEG
-    const slow = flights.filter((f) => f.pfeTo99Deg - f.pfdTurn1Deg > 8 && f.normalizedPfd < 90);
-    if (slow.length >= 2) {
-      insights.push({
-        id: `ins-${++id}`,
-        tailNumber: h.tailNumber,
-        category: 'actuator',
-        severity: 'warning',
-        title: `Yavaş / Gecikmeli Açılma — ${h.tailNumber}`,
-        description: `Speedbrake başlangıçta eksik açılıyor, zamanla %99'a ulaşıyor. Başlangıç açısı ve son açı arasındaki fark sürekli yüksek.`,
-        evidence: slow.slice(0, 5).map(
-          (f) =>
-            `${f.flightDate}: ${f.pfdTurn1Deg.toFixed(1)}° → ${f.pfeTo99Deg.toFixed(1)}° (Δ${(f.pfeTo99Deg - f.pfdTurn1Deg).toFixed(1)}°)`,
-        ),
-        recommendation:
-          'Actuator hız ayarını kontrol edin. Speedbrake hinge noktalarında sürtünme olup olmadığını inceleyin.',
-        relatedFlights: slow.length,
-        confidence: Math.min(90, 55 + slow.length * 7),
-      });
+    // 3. Slow/delayed opening
+    if (h.avgPfd < 92) {
+      const slow = flights.filter((f) => f.pfeTo99Deg - f.pfdTurn1Deg > 8 && f.normalizedPfd < 90);
+      if (slow.length >= 2) {
+        insights.push({
+          id: `ins-${++id}`,
+          tailNumber: h.tailNumber,
+          category: 'actuator',
+          severity: 'warning',
+          title: `Yavaş / Gecikmeli Açılma — ${h.tailNumber}`,
+          description: `Speedbrake başlangıçta eksik açılıyor, zamanla %99'a ulaşıyor.`,
+          evidence: slow.slice(0, 5).map(
+            (f) =>
+              `${f.flightDate}: ${f.pfdTurn1Deg.toFixed(1)}° → ${f.pfeTo99Deg.toFixed(1)}° (Δ${(f.pfeTo99Deg - f.pfdTurn1Deg).toFixed(1)}°)`,
+          ),
+          recommendation:
+            'Actuator hız ayarını kontrol edin. Speedbrake hinge noktalarında sürtünme olup olmadığını inceleyin.',
+          relatedFlights: slow.length,
+          confidence: Math.min(90, 55 + slow.length * 7),
+        });
+      }
     }
 
-    // 4. Landing‑distance anomaly
-    const ldAnom = flights.filter((f) => f.landingDistAnomaly);
-    if (ldAnom.length >= 2) {
-      insights.push({
-        id: `ins-${++id}`,
-        tailNumber: h.tailNumber,
-        category: 'operational',
-        severity: ldAnom.length >= 4 ? 'critical' : 'warning',
-        title: `İniş Mesafesi Anomalisi — ${h.tailNumber}`,
-        description: `${ldAnom.length} uçuşta 50kn iniş mesafesi > 30kn iniş mesafesi. Fiziksel olarak anormal — sensör veya fren sistemi sorunu olabilir.`,
-        evidence: ldAnom.slice(0, 5).map(
-          (f) =>
-            `${f.flightDate} ${f.takeoffAirport}→${f.landingAirport}: 30kn=${f.landingDist30kn.toFixed(0)}m, 50kn=${f.landingDist50kn.toFixed(0)}m`,
-        ),
-        recommendation:
-          'Wheel speed sensörlerini kalibre edin. Fren sistemi performansını test edin. Landing distance hesaplama algoritmasını doğrulayın.',
-        relatedFlights: ldAnom.length,
-        confidence: Math.min(90, 65 + ldAnom.length * 5),
-      });
+    // 4. Landing-distance anomaly
+    if (h.landingDistAnomalyRate > 0.02) {
+      const ldAnom = flights.filter((f) => f.landingDistAnomaly);
+      if (ldAnom.length >= 2) {
+        insights.push({
+          id: `ins-${++id}`,
+          tailNumber: h.tailNumber,
+          category: 'operational',
+          severity: ldAnom.length >= 4 ? 'critical' : 'warning',
+          title: `İniş Mesafesi Anomalisi — ${h.tailNumber}`,
+          description: `${ldAnom.length} uçuşta 50kn iniş mesafesi > 30kn iniş mesafesi. Sensör veya fren sistemi sorunu olabilir.`,
+          evidence: ldAnom.slice(0, 5).map(
+            (f) =>
+              `${f.flightDate} ${f.takeoffAirport}→${f.landingAirport}: 30kn=${f.landingDist30kn.toFixed(0)}m, 50kn=${f.landingDist50kn.toFixed(0)}m`,
+          ),
+          recommendation:
+            'Wheel speed sensörlerini kalibre edin. Fren sistemi performansını test edin.',
+          relatedFlights: ldAnom.length,
+          confidence: Math.min(90, 65 + ldAnom.length * 5),
+        });
+      }
     }
 
     // 5. Performance degradation trend
@@ -222,52 +295,58 @@ export function generatePredictiveInsights(
 }
 
 // ----------------------------------------------------------------
-// Landing‑distance analysis rows
+// Landing-distance analysis rows
 // ----------------------------------------------------------------
 export function analyzeLandingDistances(data: FlightRecord[]): LandingDistanceAnalysisRecord[] {
-  return data
-    .filter((d) => d.landingDist30kn > 0 && d.landingDist50kn > 0)
-    .map((d) => {
-      let anomalyType: LandingDistanceAnalysisRecord['anomalyType'] = 'normal';
-      let risk = 0;
+  const results: LandingDistanceAnalysisRecord[] = [];
 
-      if (d.landingDist50kn > d.landingDist30kn * 1.05) {
-        anomalyType = '50kn_exceeds_30kn';
-        risk += 40;
-      }
-      if (d.landingDist30kn > 2000) {
-        if (anomalyType === 'normal') anomalyType = 'excessive_distance';
-        risk += 20;
-      }
-      if (d.normalizedPfd < 85 && d.landingDist30kn > 1800) {
-        if (anomalyType === 'normal') anomalyType = 'pfd_correlation';
-        risk += 30;
-      }
-      if (d.normalizedPfd < 70) risk += 20;
-      if (d.durationRatio > 3) risk += 10;
+  for (let i = 0; i < data.length; i++) {
+    const d = data[i];
+    if (d.landingDist30kn <= 0 || d.landingDist50kn <= 0) continue;
 
-      return {
-        tailNumber: d.tailNumber,
-        route: `${d.takeoffAirport}→${d.landingAirport}`,
-        date: d.flightDate,
-        dist30kn: d.landingDist30kn,
-        dist50kn: d.landingDist50kn,
-        pfd: d.normalizedPfd,
-        deg: d.pfdTurn1Deg,
-        anomalyType,
-        riskScore: Math.min(100, risk),
-      };
-    })
-    .sort((a, b) => b.riskScore - a.riskScore);
+    let anomalyType: LandingDistanceAnalysisRecord['anomalyType'] = 'normal';
+    let risk = 0;
+
+    if (d.landingDist50kn > d.landingDist30kn * 1.05) {
+      anomalyType = '50kn_exceeds_30kn';
+      risk += 40;
+    }
+    if (d.landingDist30kn > 2000) {
+      if (anomalyType === 'normal') anomalyType = 'excessive_distance';
+      risk += 20;
+    }
+    if (d.normalizedPfd < 85 && d.landingDist30kn > 1800) {
+      if (anomalyType === 'normal') anomalyType = 'pfd_correlation';
+      risk += 30;
+    }
+    if (d.normalizedPfd < 70) risk += 20;
+    if (d.durationRatio > 3) risk += 10;
+
+    results.push({
+      tailNumber: d.tailNumber,
+      route: `${d.takeoffAirport}→${d.landingAirport}`,
+      date: d.flightDate,
+      dist30kn: d.landingDist30kn,
+      dist50kn: d.landingDist50kn,
+      pfd: d.normalizedPfd,
+      deg: d.pfdTurn1Deg,
+      anomalyType,
+      riskScore: Math.min(100, risk),
+    });
+  }
+
+  results.sort((a, b) => b.riskScore - a.riskScore);
+  return results;
 }
 
 // ----------------------------------------------------------------
-// Flight timeline entries
+// Flight timeline entries — light transform, no heavy sort needed
 // ----------------------------------------------------------------
 export function buildFlightTimeline(data: FlightRecord[]): FlightTimelineEntry[] {
-  return data
-    .sort((a, b) => a.flightDate.localeCompare(b.flightDate) || a.tailNumber.localeCompare(b.tailNumber))
-    .map((d) => ({
+  const entries: FlightTimelineEntry[] = new Array(data.length);
+  for (let i = 0; i < data.length; i++) {
+    const d = data[i];
+    entries[i] = {
       date: d.flightDate,
       tailNumber: d.tailNumber,
       route: `${d.takeoffAirport}→${d.landingAirport}`,
@@ -279,5 +358,7 @@ export function buildFlightTimeline(data: FlightRecord[]): FlightTimelineEntry[]
       landingDist30: d.landingDist30kn,
       landingDist50: d.landingDist50kn,
       gsAtSbop: d.gsAtAutoSbop,
-    }));
+    };
+  }
+  return entries;
 }
