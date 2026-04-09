@@ -10,7 +10,7 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: 'B737 Speedbrake Predictive Maintenance',
-  description: 'NG & MAX Speedbrake Arıza Tespit ve Tahminsel Bakım Sistemi — Korelasyon analizi, anomali tespiti, NG/MAX karşılaştırması',
+  description: 'Speedbrake Arıza Tespit ve Tahminsel Bakım Sistemi — Korelasyon analizi, anomali tespiti',
   icons: {
     icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">✈️</text></svg>',
   },

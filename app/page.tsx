@@ -25,7 +25,7 @@ export default function Home() {
             <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent mb-3">
               B737 Speedbrake Analizi
             </h1>
-            <p className="text-slate-400 text-lg mb-2">NG & MAX Speedbrake Predictive Maintenance</p>
+            <p className="text-slate-400 text-lg mb-2">Speedbrake Predictive Maintenance</p>
             <p className="text-slate-500 text-sm mb-10">
               Excel dosyanızı yükleyerek uçuş verilerindeki speedbrake anomalilerini tespit edin.
               10.000+ satır desteklenir — sanal tablolar ve akıllı örnekleme ile hızlı çalışır.
@@ -42,7 +42,7 @@ export default function Home() {
               </div>
               <div className="p-4 bg-slate-800/50 rounded-lg border border-slate-700/50">
                 <div className="text-2xl mb-1">✈️</div>
-                <div className="text-xs text-slate-400">NG vs MAX</div>
+                <div className="text-xs text-slate-400">Tahminsel Bakım</div>
               </div>
             </div>
           </div>

@@ -7,7 +7,7 @@ import { getCachedSummary, getCachedHealthScores, getCachedInsights, clearAllCac
 import { debounce } from '@/lib/performance';
 import KPICards from './KPICards';
 import Filters from './Filters';
-import { Plane, RotateCcw, AlertTriangle, BarChart3, GitCompareArrows, Activity, TrendingUp, Brain, Ruler, Heart, Clock, Loader2 } from 'lucide-react';
+import { Plane, RotateCcw, AlertTriangle, BarChart3, GitCompareArrows, Activity, TrendingUp, Brain, Ruler, Heart, Clock, Loader2, BookOpen } from 'lucide-react';
 
 // Lazy-load heavy tab components
 const CorrelationHeatmap = lazy(() => import('./CorrelationHeatmap'));
@@ -18,13 +18,14 @@ const PredictiveInsights = lazy(() => import('./PredictiveInsights'));
 const LandingDistanceAnalysisView = lazy(() => import('./LandingDistanceAnalysis'));
 const TailHealthMatrix = lazy(() => import('./TailHealthMatrix'));
 const FlightTimeline = lazy(() => import('./FlightTimeline'));
+const DocsTab = lazy(() => import('./DocsTab'));
 
 interface Props {
   data: FlightRecord[];
   onReset: () => void;
 }
 
-type TabKey = 'overview' | 'correlation' | 'scatter' | 'anomalies' | 'trends' | 'predictive' | 'landing' | 'health' | 'timeline';
+type TabKey = 'overview' | 'correlation' | 'scatter' | 'anomalies' | 'trends' | 'predictive' | 'landing' | 'health' | 'timeline' | 'docs';
 
 function TabSpinner() {
   return (
@@ -46,7 +47,7 @@ export default function Dashboard({ data, onReset }: Props) {
     airport: '',
   });
 
-  // Debounced filter setter — avoids re-computing on every keystroke
+  // Debounced filter setter
   const debouncedSetFilters = useMemo(
     () => debounce((f: FilterState) => {
       startTransition(() => setFilters(f));
@@ -59,13 +60,10 @@ export default function Dashboard({ data, onReset }: Props) {
     [debouncedSetFilters],
   );
 
-  // ---- INDEX-BASED FILTERING (no [...data] copies) ----
   const { filteredData, index } = useFilteredData(data, filters);
 
-  // ---- CACHED ANALYTICS (referential-equality cache, no recompute if same data ref) ----
   const summary = useMemo(() => getCachedSummary(filteredData), [filteredData]);
 
-  // Only compute health scores when needed tabs are active
   const healthScores = useMemo(() => {
     if (['overview', 'predictive', 'health'].includes(activeTab)) {
       return getCachedHealthScores(filteredData);
@@ -95,6 +93,7 @@ export default function Dashboard({ data, onReset }: Props) {
     { key: 'landing', label: 'İniş Mesafesi', icon: <Ruler className="w-4 h-4" /> },
     { key: 'trends', label: 'Tail Trend', icon: <TrendingUp className="w-4 h-4" /> },
     { key: 'timeline', label: 'Zaman Çizelgesi', icon: <Clock className="w-4 h-4" /> },
+    { key: 'docs', label: 'Nasıl Çalışır?', icon: <BookOpen className="w-4 h-4" /> },
   ];
 
   const handleTabChange = useCallback((key: TabKey) => {
@@ -153,12 +152,14 @@ export default function Dashboard({ data, onReset }: Props) {
         </div>
       </header>
 
-      {/* Filters — pass index for zero-scan dropdown population */}
-      <div className="max-w-[1800px] mx-auto px-4 pt-4">
-        <Filters index={index} filters={filters} onFilterChange={handleFilterChange} />
-      </div>
+      {/* Filters — hide on docs tab */}
+      {activeTab !== 'docs' && (
+        <div className="max-w-[1800px] mx-auto px-4 pt-4">
+          <Filters index={index} filters={filters} onFilterChange={handleFilterChange} />
+        </div>
+      )}
 
-      {/* Content — only render active tab */}
+      {/* Content */}
       <div className="max-w-[1800px] mx-auto px-4 py-4">
         <Suspense fallback={<TabSpinner />}>
           {activeTab === 'overview' && (
@@ -197,6 +198,7 @@ export default function Dashboard({ data, onReset }: Props) {
           {activeTab === 'landing' && <LandingDistanceAnalysisView data={filteredData} />}
           {activeTab === 'trends' && <TailTrend data={filteredData} />}
           {activeTab === 'timeline' && <FlightTimeline data={filteredData} />}
+          {activeTab === 'docs' && <DocsTab />}
         </Suspense>
       </div>
     </div>

@@ -9,7 +9,7 @@ interface Props {
 
 export default function KPICards({ summary }: Props) {
   const cards = [
-    { label: 'Toplam Uçuş', value: summary.totalFlights.toLocaleString(), sub: `${summary.uniqueTails} uçak (${summary.uniqueNGTails} NG · ${summary.uniqueMAXTails} MAX)`, icon: <Plane className="w-5 h-5" />, color: 'blue' },
+    { label: 'Toplam Uçuş', value: summary.totalFlights.toLocaleString(), sub: `${summary.uniqueTails} uçak`, icon: <Plane className="w-5 h-5" />, color: 'blue' },
     { label: 'Kritik Anomali', value: summary.criticalCount.toLocaleString(), sub: `${summary.problematicTails.length} farklı uçak`, icon: <AlertTriangle className="w-5 h-5" />, color: 'red' },
     { label: 'Uyarı', value: summary.warningCount.toLocaleString(), sub: `${((summary.warningCount / Math.max(summary.totalFlights, 1)) * 100).toFixed(1)}% oran`, icon: <AlertTriangle className="w-5 h-5" />, color: 'amber' },
     { label: 'Normal', value: summary.normalCount.toLocaleString(), sub: `${((summary.normalCount / Math.max(summary.totalFlights, 1)) * 100).toFixed(1)}% sağlıklı`, icon: <CheckCircle className="w-5 h-5" />, color: 'emerald' },
