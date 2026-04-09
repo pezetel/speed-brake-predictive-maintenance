@@ -14,7 +14,6 @@ const CorrelationHeatmap = lazy(() => import('./CorrelationHeatmap'));
 const ScatterPlot = lazy(() => import('./ScatterPlot'));
 const AnomalyTable = lazy(() => import('./AnomalyTable'));
 const TailTrend = lazy(() => import('./TailTrend'));
-const NGvsMAX = lazy(() => import('./NGvsMAX'));
 const PredictiveInsights = lazy(() => import('./PredictiveInsights'));
 const LandingDistanceAnalysisView = lazy(() => import('./LandingDistanceAnalysis'));
 const TailHealthMatrix = lazy(() => import('./TailHealthMatrix'));
@@ -25,7 +24,7 @@ interface Props {
   onReset: () => void;
 }
 
-type TabKey = 'overview' | 'correlation' | 'scatter' | 'anomalies' | 'trends' | 'ngmax' | 'predictive' | 'landing' | 'health' | 'timeline';
+type TabKey = 'overview' | 'correlation' | 'scatter' | 'anomalies' | 'trends' | 'predictive' | 'landing' | 'health' | 'timeline';
 
 function TabSpinner() {
   return (
@@ -96,7 +95,6 @@ export default function Dashboard({ data, onReset }: Props) {
     { key: 'landing', label: 'İniş Mesafesi', icon: <Ruler className="w-4 h-4" /> },
     { key: 'trends', label: 'Tail Trend', icon: <TrendingUp className="w-4 h-4" /> },
     { key: 'timeline', label: 'Zaman Çizelgesi', icon: <Clock className="w-4 h-4" /> },
-    { key: 'ngmax', label: 'NG vs MAX', icon: <Plane className="w-4 h-4" /> },
   ];
 
   const handleTabChange = useCallback((key: TabKey) => {
@@ -199,7 +197,6 @@ export default function Dashboard({ data, onReset }: Props) {
           {activeTab === 'landing' && <LandingDistanceAnalysisView data={filteredData} />}
           {activeTab === 'trends' && <TailTrend data={filteredData} />}
           {activeTab === 'timeline' && <FlightTimeline data={filteredData} />}
-          {activeTab === 'ngmax' && <NGvsMAX data={filteredData} />}
         </Suspense>
       </div>
     </div>
