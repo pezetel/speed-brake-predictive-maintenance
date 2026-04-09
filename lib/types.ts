@@ -35,6 +35,10 @@ export interface AnomalySummary {
   avgDuration: number;
   avgLandingDist: number;
   doubledRecords: number;
+  landingDistAnomalyCount: number;
+  avgDurationRatio: number;
+  slowOpeningCount: number;
+  mechanicalFailureCount: number;
 }
 
 export interface CorrelationData {
@@ -68,6 +72,8 @@ export interface TailHealthScore {
   trend: 'improving' | 'stable' | 'degrading';
   durationRatioAvg: number;
   landingDistAnomalyRate: number;
+  lastFlightDate: string;
+  degradationRate: number;
 }
 
 export interface PredictiveInsight {
@@ -83,7 +89,7 @@ export interface PredictiveInsight {
   confidence: number;
 }
 
-export interface LandingDistanceAnalysis {
+export interface LandingDistanceAnalysisRecord {
   tailNumber: string;
   route: string;
   date: string;
@@ -93,4 +99,18 @@ export interface LandingDistanceAnalysis {
   deg: number;
   anomalyType: 'normal' | '50kn_exceeds_30kn' | 'excessive_distance' | 'pfd_correlation';
   riskScore: number;
+}
+
+export interface FlightTimelineEntry {
+  date: string;
+  tailNumber: string;
+  route: string;
+  pfd: number;
+  deg: number;
+  durationRatio: number;
+  anomalyLevel: 'normal' | 'warning' | 'critical';
+  reasons: string[];
+  landingDist30: number;
+  landingDist50: number;
+  gsAtSbop: number;
 }
